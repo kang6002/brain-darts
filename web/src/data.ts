@@ -1,6 +1,6 @@
 // Loading the static files in public/data/ (made by pipeline/build_atlas.py).
 
-import type { Difficulty, SliceMeta, Structure } from "./types";
+import type { Difficulty, Quality, SliceMeta, Structure, Variant } from "./types";
 import { decodeLabelMap, gunzipIfNeeded, type LabelMap } from "./labelmap";
 
 // BASE_URL is "./" (see vite.config.ts), so this also works on GitHub Pages.
@@ -8,6 +8,7 @@ const DATA = `${import.meta.env.BASE_URL}data/`;
 
 export interface LoadedSlice {
   meta: SliceMeta;
+  variant: Variant;
   image: HTMLImageElement;
   labels: LabelMap;
 }
@@ -17,11 +18,14 @@ export interface AtlasIndex {
   slices: SliceMeta[];
   /** All regions of each difficulty, before the per-slice size filter. */
   levels: Record<Difficulty, ReadonlySet<number>>;
+  /** Region index → id of the slice where it is largest (for study-mode search). */
+  bestSlice: ReadonlyMap<number, string>;
 }
 
 interface SlicesFile {
   slices: SliceMeta[];
   levels: Record<Difficulty, number[]>;
+  bestSlice: Record<string, string>;
 }
 
 async function fetchOk(url: string): Promise<Response> {
@@ -39,7 +43,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-/** The small files needed before a game can start (~200 KB). */
+/** The small files needed before anything can start (~230 KB). */
 export async function loadIndex(): Promise<AtlasIndex> {
   const [structures, index] = await Promise.all([
     fetchOk(`${DATA}structures.json`).then((r) => r.json() as Promise<Structure[]>),
@@ -53,24 +57,32 @@ export async function loadIndex(): Promise<AtlasIndex> {
       medium: new Set(index.levels.medium),
       hard: new Set(index.levels.hard),
     },
+    bestSlice: new Map(Object.entries(index.bestSlice).map(([k, v]) => [Number(k), v])),
   };
 }
 
-// Each slice is downloaded at most once; asking again returns the same promise.
+// Each slice is downloaded at most once per quality; asking again returns the same promise.
 const cache = new Map<string, Promise<LoadedSlice>>();
 
 /** Image + label map of one slice, downloaded the first time it is needed. */
-export function loadSlice(meta: SliceMeta): Promise<LoadedSlice> {
-  let pending = cache.get(meta.id);
+export function loadSlice(meta: SliceMeta, quality: Quality): Promise<LoadedSlice> {
+  const key = `${meta.id}@${quality}`;
+  let pending = cache.get(key);
   if (!pending) {
+    const variant = meta.variants[quality];
     pending = Promise.all([
-      loadImage(`${DATA}${meta.image}`),
-      fetchOk(`${DATA}${meta.labels}`)
+      loadImage(`${DATA}${variant.image}`),
+      fetchOk(`${DATA}${variant.labels}`)
         .then((r) => r.arrayBuffer())
         .then(gunzipIfNeeded),
-    ]).then(([image, buffer]) => ({ meta, image, labels: decodeLabelMap(buffer, meta.width, meta.height) }));
-    pending.catch(() => cache.delete(meta.id)); // allow a retry after a network error
-    cache.set(meta.id, pending);
+    ]).then(([image, buffer]) => ({
+      meta,
+      variant,
+      image,
+      labels: decodeLabelMap(buffer, variant.width, variant.height),
+    }));
+    pending.catch(() => cache.delete(key)); // allow a retry after a network error
+    cache.set(key, pending);
   }
   return pending;
 }

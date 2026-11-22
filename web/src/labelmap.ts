@@ -64,6 +64,13 @@ export function screenToSlice(
   };
 }
 
+/** Number of pixels whose structure is in `mask` (see tree.ts:descendantMask). */
+export function countPixels(map: LabelMap, mask: Uint8Array): number {
+  let n = 0;
+  for (let i = 0; i < map.data.length; i++) n += mask[map.data[i]];
+  return n;
+}
+
 export interface Nearest {
   distancePx: number; // 0 when the click is inside the target
   point: { x: number; y: number }; // closest point of the target to the click

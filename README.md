@@ -1,7 +1,9 @@
-# Where in the Brain?
+# Brain Darts
 
-A GeoGuessr-style quiz for mouse brain anatomy. You see a coronal slice and a region
-name, click where you think it is, and score points by how close you were.
+A neuroanatomy game for mouse brain slices. We name a brain region, you throw the
+dart (click where you think it is), and you score points by how close you land.
+Three difficulty levels from major divisions down to small nuclei, plus a study
+mode to browse every slice and look up any region.
 
 ## Run it
 
@@ -13,7 +15,7 @@ cd pipeline
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python build_atlas.py
+python build_atlas.py     # first run downloads ~410 MB of Allen data
 pytest
 cd ..
 

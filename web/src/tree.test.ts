@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IDX, STRUCTURES } from "./testFixtures";
-import { descendantMask, displayName, isWithin, OUTSIDE, regionAtLevel } from "./tree";
+import { breadcrumb, descendantMask, displayName, isWithin, levelLookup, OUTSIDE, regionAtLevel } from "./tree";
 
 describe("isWithin", () => {
   it("is true for the region itself and everything below it", () => {
@@ -35,6 +35,27 @@ describe("regionAtLevel", () => {
     expect(regionAtLevel(IDX.fiber, level, STRUCTURES)).toBeNull();
     expect(regionAtLevel(IDX.IB, level, STRUCTURES)).toBeNull(); // a parent, not inside
     expect(regionAtLevel(OUTSIDE, level, STRUCTURES)).toBeNull();
+  });
+});
+
+describe("levelLookup", () => {
+  it("maps every structure to its region at that level, or OUTSIDE", () => {
+    const lookup = levelLookup(new Set([IDX.TH, IDX.HY]), STRUCTURES);
+    expect(lookup[IDX.PVH]).toBe(IDX.HY);
+    expect(lookup[IDX.TH]).toBe(IDX.TH);
+    expect(lookup[IDX.CB]).toBe(OUTSIDE);
+    expect(lookup[OUTSIDE]).toBe(OUTSIDE);
+  });
+});
+
+describe("breadcrumb", () => {
+  it("lists the path from the top, skipping root and grey", () => {
+    expect(breadcrumb(IDX.PVH, STRUCTURES)).toEqual([IDX.IB, IDX.HY, IDX.PVH]);
+  });
+
+  it("still names a shallow region that was clicked", () => {
+    expect(breadcrumb(IDX.fiber, STRUCTURES)).toEqual([IDX.fiber]);
+    expect(breadcrumb(OUTSIDE, STRUCTURES)).toEqual([]);
   });
 });
 

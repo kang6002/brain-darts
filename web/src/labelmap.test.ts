@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { descendantMask } from "./tree";
 import {
+  countPixels,
   decodeLabelMap,
   gunzipIfNeeded,
   labelAt,
@@ -96,6 +98,14 @@ describe("screenToSlice", () => {
   it("still works when CSS shrinks the canvas", () => {
     const small = { left: 0, top: 0, width: 228, height: 160 };
     expect(screenToSlice(57, 40, small, 456, 320)).toEqual({ x: 114, y: 80 });
+  });
+});
+
+describe("countPixels", () => {
+  it("counts pixels of a region including its subregions", () => {
+    expect(countPixels(map, descendantMask(IDX.TH, STRUCTURES))).toBe(3);
+    expect(countPixels(map, descendantMask(IDX.HY, STRUCTURES))).toBe(2); // HY + PVH
+    expect(countPixels(map, descendantMask(IDX.fiber, STRUCTURES))).toBe(0);
   });
 });
 

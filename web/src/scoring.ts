@@ -10,6 +10,13 @@ export const DECAY_MM = 0.75;
 export const PARENT_FLOOR = 250;
 /** Parents shallower than this (root = 0, "Basic cell groups" = 1) give no partial credit. */
 export const MIN_PARENT_DEPTH = 2;
+/**
+ * The parent only counts if, on this slice, it is at most this many times the
+ * target's area. Otherwise it is too big to be a "near miss" (for a cortical
+ * area the parent is the whole isocortex, 20–37× larger). Chosen from the data:
+ * 4× keeps TH→Interbrain (1.9×), CA→Hippocampal region (1.4×), CA1→Ammon's horn.
+ */
+export const MAX_PARENT_AREA_RATIO = 4;
 
 /** 0 mm → 1000, 0.5 mm → 513, 1 mm → 264, 2 mm → 69. */
 export function distancePoints(distanceMm: number): number {
@@ -23,19 +30,25 @@ export interface Score {
   creditedParent: number | null;
 }
 
+/**
+ * @param areaPx area of a region (with its subregions) on this slice, in pixels.
+ *               Only called for the target and its parent.
+ */
 export function scoreClick(
   distanceMm: number,
   clickedIndex: number,
   targetIndex: number,
   structures: Structure[],
+  areaPx: (index: number) => number,
 ): Score {
   const points = distancePoints(distanceMm);
   const parent = structures[targetIndex].parentIndex;
   if (
+    points < PARENT_FLOOR &&
     parent !== null &&
     structures[parent].depth >= MIN_PARENT_DEPTH &&
     isWithin(clickedIndex, parent, structures) &&
-    points < PARENT_FLOOR
+    areaPx(parent) <= MAX_PARENT_AREA_RATIO * areaPx(targetIndex)
   ) {
     return { points: PARENT_FLOOR, distanceMm, creditedParent: parent };
   }

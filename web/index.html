@@ -3,69 +3,163 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Where in the Brain?</title>
-    <!-- Inline tab icon (a target), so the browser doesn't request a missing /favicon.ico -->
+    <meta name="theme-color" content="#120e2a" />
+    <title>Brain Darts</title>
+    <meta name="description" content="A neuroanatomy game: find brain regions on mouse brain slices. The closer your dart, the more points." />
+    <!-- Inline tab icon (a dartboard), so the browser doesn't request a missing /favicon.ico -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%232f6fdf' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%232f6fdf'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%237c5cff'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23120e2a'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd23f'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/src/style.css" />
   </head>
-  <body>
-    <header>
-      <h1>Where in the Brain?</h1>
-      <p class="sub" id="subtitle">Mouse · coronal slices</p>
+  <body data-screen="menu">
+    <header class="topbar">
+      <button id="home-btn" class="logo" hidden aria-label="Back to menu">
+        <span class="logo-mark" aria-hidden="true"></span><span>Brain<b>Darts</b></span>
+      </button>
+      <div id="hud" class="hud" hidden>
+        <div class="pill"><small>Level</small><b id="hud-level"></b></div>
+        <div class="pill"><small>Round</small><b id="hud-round"></b></div>
+        <div class="pill pill-score"><small>Score</small><b id="hud-score"></b></div>
+      </div>
     </header>
 
     <main>
-      <section id="start">
-        <p>
-          You will see 10 coronal slices of a mouse brain. Each round names a region:
-          click where you think it is. The closer you are, the more points you get
-          (1000 for a click inside the region).
-        </p>
-        <p id="status" class="muted">Loading atlas…</p>
+      <!-- ============================== MENU ============================== -->
+      <section id="menu" class="screen">
+        <div class="hero">
+          <span class="logo-mark big" aria-hidden="true"></span>
+          <h1 class="title">Brain<span>Darts</span></h1>
+          <p class="tagline">We name a brain region. You throw the dart.<br />How close can you get?</p>
+          <p id="status" class="status">Loading atlas…</p>
+        </div>
+
+        <h2 class="section-label">Play · 10 rounds</h2>
         <div class="levels">
-          <button class="level" data-difficulty="easy" disabled>
+          <button class="level level-easy" data-difficulty="easy" disabled>
+            <span class="pips" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
             <strong>Easy</strong>
-            <span>Major divisions: isocortex, thalamus, cerebellum…</span>
+            <span class="desc">Major divisions: isocortex, thalamus, cerebellum…</span>
             <span class="best" data-best="easy"></span>
           </button>
-          <button class="level" data-difficulty="medium" disabled>
+          <button class="level level-medium" data-difficulty="medium" disabled>
+            <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
             <strong>Medium</strong>
-            <span>Areas: cortical areas, CA, dentate gyrus, striatum parts…</span>
+            <span class="desc">Cortical areas and classic nuclei: VPM, SNr, PVH, CA1…</span>
             <span class="best" data-best="medium"></span>
           </button>
-          <button class="level" data-difficulty="hard" disabled>
+          <button class="level level-hard" data-difficulty="hard" disabled>
+            <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
             <strong>Hard</strong>
-            <span>Nuclei and fields: CA1, VPM, LGd, PVH, SCs…</span>
+            <span class="desc">Almost 300 nuclei and fields, down to the small ones.</span>
             <span class="best" data-best="hard"></span>
           </button>
         </div>
+
+        <h2 class="section-label">Learn</h2>
+        <button id="study-btn" class="study-card" disabled>
+          <span class="study-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 21 21" />
+            </svg>
+          </span>
+          <span>
+            <strong>Study mode</strong>
+            <span class="desc">Browse all slices, hover to name every region, search by name. No score.</span>
+          </span>
+        </button>
+
+        <div class="settings">
+          <span>Image quality</span>
+          <div class="segmented" id="quality" role="group" aria-label="Image quality">
+            <button data-quality="10um">Sharp · 10 µm</button>
+            <button data-quality="25um">Light · 25 µm</button>
+          </div>
+        </div>
       </section>
 
-      <section id="play" hidden>
-        <div class="hud">
-          <span id="round-label"></span>
-          <span id="total-label"></span>
+      <!-- ============================== GAME ============================== -->
+      <section id="play" class="screen" hidden>
+        <div id="prompt" class="prompt">
+          <small>Find</small>
+          <h2 id="target-name"></h2>
+          <span id="target-acronym" class="chip"></span>
         </div>
-        <h2 id="prompt">Find: <strong id="target-name"></strong> <span id="target-acronym" class="muted"></span></h2>
-        <canvas id="canvas" aria-label="Brain slice. Click where you think the region is."></canvas>
-        <p id="slice-info" class="muted small"></p>
-        <div id="result" hidden>
-          <p id="result-main"></p>
-          <p id="result-detail" class="muted"></p>
-          <button id="next-btn">Next round</button>
+        <div id="game-stage" class="stage">
+          <canvas id="game-canvas" aria-label="Brain slice. Click where you think the region is."></canvas>
+          <div id="game-loading" class="loading" hidden><span class="spinner"></span>Loading slice…</div>
+        </div>
+        <p id="slice-info" class="slice-info"></p>
+        <!-- Below the slice, so it never hides the dart or the answer -->
+        <div id="result" class="result" hidden>
+          <div class="result-head">
+            <span id="verdict" class="verdict"></span>
+            <span class="points">+<b id="points">0</b></span>
+          </div>
+          <div class="result-body">
+            <div class="bar"><div id="points-bar" class="fill"></div></div>
+            <p id="distance" class="distance"></p>
+            <p id="result-detail" class="detail"></p>
+          </div>
+          <div class="result-actions">
+            <button id="next-btn" class="cta">Next round</button>
+            <span class="hint">or press Space</span>
+          </div>
         </div>
       </section>
 
-      <section id="end" hidden>
-        <h2 id="final-score"></h2>
-        <p id="best-end" class="muted"></p>
-        <ol id="summary"></ol>
+      <!-- ============================== END ============================== -->
+      <section id="end" class="screen" hidden>
+        <div class="final">
+          <small id="end-level"></small>
+          <div class="final-score"><b id="final-score">0</b><span>/ 10 000</span></div>
+          <div id="rank" class="rank"></div>
+          <p id="best-end" class="best-end"></p>
+        </div>
+        <ol id="summary" class="rounds"></ol>
         <div class="buttons">
-          <button id="again-btn">Play again</button>
-          <button id="menu-btn" class="secondary">Change difficulty</button>
+          <button id="again-btn" class="cta">Play again</button>
+          <button id="menu-btn" class="ghost">Menu</button>
+        </div>
+      </section>
+
+      <!-- ============================== STUDY ============================== -->
+      <section id="study" class="screen" hidden>
+        <div class="study-layout">
+          <div class="study-main">
+            <div id="study-stage" class="stage">
+              <canvas id="study-canvas" aria-label="Brain slice. Hover or tap to name a region."></canvas>
+              <div id="tooltip" class="tooltip" hidden></div>
+              <div id="study-loading" class="loading" hidden><span class="spinner"></span>Loading…</div>
+            </div>
+            <div class="slider-row">
+              <button id="prev-slice" class="round-btn" aria-label="Previous slice (left arrow)">‹</button>
+              <input type="range" id="slice-range" min="0" max="35" step="1" aria-label="Slice position, front to back" />
+              <button id="next-slice" class="round-btn" aria-label="Next slice (right arrow)">›</button>
+            </div>
+            <p id="study-slice-info" class="slice-info"></p>
+          </div>
+          <aside class="panel">
+            <label class="field">
+              <span>Search a region</span>
+              <input id="search" list="region-list" type="search" placeholder="e.g. CA1, Thalamus, VPM…" autocomplete="off" />
+            </label>
+            <datalist id="region-list"></datalist>
+            <div class="field">
+              <span>Detail</span>
+              <div class="segmented" id="study-level" role="group" aria-label="Level of detail">
+                <button data-level="easy">Divisions</button>
+                <button data-level="medium">Areas</button>
+                <button data-level="hard">Detailed</button>
+              </div>
+              <small id="level-note" class="muted"></small>
+            </div>
+            <div class="toggles">
+              <label class="toggle"><input type="checkbox" id="show-outlines" checked /> Outlines</label>
+              <label class="toggle"><input type="checkbox" id="show-colors" /> Atlas colours</label>
+            </div>
+            <div id="study-info" class="info"></div>
+          </aside>
         </div>
       </section>
     </main>
@@ -78,12 +172,12 @@
         Allen Reference Atlas – Mouse Brain [brain atlas], available from
         <a href="https://atlas.brain-map.org">atlas.brain-map.org</a>.
         Image credit: Allen Institute. Slices and labels derived from the
-        <a href="https://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf/">CCFv3 25&nbsp;µm annotation and average template</a>.
+        <a href="https://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf/">CCFv3 annotation and average template</a>.
       </p>
       <p>
         Used under the <a href="https://alleninstitute.org/terms-of-use/">Allen Institute Terms of Use</a>
         (<a href="https://alleninstitute.org/citation-policy/">citation policy</a>).
-        This is an independent educational project, not affiliated with or endorsed by the Allen Institute.
+        Brain Darts is an independent educational project, not affiliated with or endorsed by the Allen Institute.
       </p>
     </footer>
 
