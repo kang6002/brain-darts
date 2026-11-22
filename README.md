@@ -2,8 +2,9 @@
 
 A neuroanatomy game for mouse brain slices. We name a brain region, you throw the
 dart (click where you think it is), and you score points by how close you land.
-Three difficulty levels from major divisions down to small nuclei, plus a study
-mode to browse every slice and look up any region.
+Three difficulty levels from major divisions down to small nuclei, a review mode
+that brings back the regions you miss (spaced repetition), and a study mode to
+browse every slice and look up any region.
 
 ## Run it
 

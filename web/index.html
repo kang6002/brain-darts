@@ -40,23 +40,39 @@
             <span class="pips" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
             <strong>Easy</strong>
             <span class="desc">Major divisions: isocortex, thalamus, cerebellum…</span>
+            <span class="mastery" data-mastery="easy"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="easy"></span>
           </button>
           <button class="level level-medium" data-difficulty="medium" disabled>
             <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
             <strong>Medium</strong>
             <span class="desc">Cortical areas and classic nuclei: VPM, SNr, PVH, CA1…</span>
+            <span class="mastery" data-mastery="medium"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="medium"></span>
           </button>
           <button class="level level-hard" data-difficulty="hard" disabled>
             <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
             <strong>Hard</strong>
             <span class="desc">Almost 300 nuclei and fields, down to the small ones.</span>
+            <span class="mastery" data-mastery="hard"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="hard"></span>
           </button>
         </div>
 
         <h2 class="section-label">Learn</h2>
+        <div class="learn">
+        <button id="review-btn" class="study-card review-card" disabled>
+          <span class="study-icon review-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 12a8 8 0 1 1-2.3-5.6" /><path d="M20 4v5h-5" />
+            </svg>
+            <b id="review-count" class="count-badge" hidden></b>
+          </span>
+          <span>
+            <strong>Review</strong>
+            <span class="desc" id="review-desc">Regions you miss land here and come back until you know them.</span>
+          </span>
+        </button>
         <button id="study-btn" class="study-card" disabled>
           <span class="study-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
@@ -68,6 +84,7 @@
             <span class="desc">Browse all slices, hover to name every region, search by name. No score.</span>
           </span>
         </button>
+        </div>
 
         <div class="settings">
           <span>Image quality</span>
@@ -75,6 +92,7 @@
             <button data-quality="10um">Sharp · 10 µm</button>
             <button data-quality="25um">Light · 25 µm</button>
           </div>
+          <button id="reset-btn" class="text-btn">Reset review progress</button>
         </div>
       </section>
 
@@ -112,7 +130,7 @@
       <section id="end" class="screen" hidden>
         <div class="final">
           <small id="end-level"></small>
-          <div class="final-score"><b id="final-score">0</b><span>/ 10 000</span></div>
+          <div class="final-score"><b id="final-score">0</b><span id="final-max">/ 10 000</span></div>
           <div id="rank" class="rank"></div>
           <p id="best-end" class="best-end"></p>
         </div>

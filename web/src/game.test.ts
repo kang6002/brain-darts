@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeRounds, rankFor } from "./game";
+import { makeReviewRounds, makeRounds, pickWeighted, rankFor } from "./game";
 import type { SliceMeta, Variant } from "./types";
 
 function slice(id: string, easy: number[], hard: number[] = []): SliceMeta {
@@ -9,6 +9,30 @@ function slice(id: string, easy: number[], hard: number[] = []): SliceMeta {
     regions: "", targets: { easy, medium: [], hard },
   };
 }
+
+describe("pickWeighted", () => {
+  it("never picks a zero-weight item when others have weight", () => {
+    for (let s = 1; s < 100; s++) expect(pickWeighted(["a", "b"], (x) => (x === "a" ? 0 : 1), seeded(s))).toBe("b");
+  });
+});
+
+describe("makeReviewRounds", () => {
+  const slices = [slice("a", [1, 2], [7]), slice("b", [2], [8])];
+
+  it("asks the given regions, at the easiest level that includes them", () => {
+    const rounds = makeReviewRounds(slices, [7, 2, 8], 10, seeded(1));
+    expect(rounds.map((r) => r.target).sort()).toEqual([2, 7, 8]);
+    for (const r of rounds) {
+      expect(r.level).toBe(r.target === 2 ? "easy" : "hard");
+      expect(r.slice.targets[r.level]).toContain(r.target);
+    }
+  });
+
+  it("takes only the n most urgent and skips regions not on any slice", () => {
+    const rounds = makeReviewRounds(slices, [99, 7, 2, 8], 2, seeded(1));
+    expect(rounds.map((r) => r.target).sort()).toEqual([2, 7]);
+  });
+});
 
 describe("rankFor", () => {
   it("picks the title for the share of the maximum score", () => {
@@ -54,6 +78,23 @@ describe("makeRounds", () => {
       const targets = makeRounds(many, "easy", 8, seeded(s)).map((r) => r.target);
       expect(new Set(targets.slice(0, 4)).size).toBe(4);
     }
+  });
+
+  it("picks heavily weighted (weak) regions first more often", () => {
+    const four = [slice("a", [1, 2]), slice("b", [3, 4])];
+    let firstIsWeak = 0;
+    for (let s = 1; s <= 400; s++) {
+      const [first] = makeRounds(four, "easy", 1, seeded(s), (r) => (r === 3 ? 6 : 1));
+      if (first.target === 3) firstIsWeak++;
+    }
+    // expected share 6 / (6 + 1 + 1 + 1) = 67 %; uniform would be 25 %
+    expect(firstIsWeak / 400).toBeGreaterThan(0.55);
+    expect(firstIsWeak / 400).toBeLessThan(0.8);
+  });
+
+  it("puts each region on a slice where it can be asked", () => {
+    const rounds = makeRounds([slice("a", [1]), slice("b", [2]), slice("c", [1, 2])], "easy", 6, seeded(7));
+    for (const r of rounds) expect(r.slice.targets.easy).toContain(r.target);
   });
 
   it("fails clearly if no slice has targets", () => {

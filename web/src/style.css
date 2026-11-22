@@ -439,6 +439,97 @@ button.level .best {
   font-weight: 900;
 }
 
+.learn {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.review-icon {
+  position: relative;
+  background: linear-gradient(135deg, var(--yellow), var(--pink));
+  color: #2a1030;
+}
+
+.review-card:not(:disabled):hover {
+  border-color: var(--yellow);
+}
+
+.count-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--pink);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 900;
+  box-shadow: 0 0 0 3px var(--bg);
+}
+
+/* "12 / 109 mastered" bar on the level cards */
+.mastery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.mastery-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.mastery-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: #fff;
+  transition: width 0.5s;
+}
+
+.mastery small {
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-btn {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.text-btn:hover {
+  color: var(--text);
+}
+
+.record {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.record[data-status="due for review"] {
+  color: var(--pink);
+}
+
+.record[data-status="mastered"] {
+  color: var(--green);
+}
+
 .settings {
   display: flex;
   align-items: center;
@@ -731,9 +822,27 @@ button.level .best {
   gap: 8px;
 }
 
+.badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.badge-to-review {
+  color: var(--pink);
+}
+
+.badge-up {
+  color: var(--cyan);
+}
+
+.badge-mastered {
+  color: var(--green);
+}
+
 .rounds li {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) 52px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) 84px 52px;
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
@@ -941,7 +1050,7 @@ footer a {
     display: none;
   }
   .rounds li {
-    grid-template-columns: minmax(0, 1fr) 52px;
+    grid-template-columns: minmax(0, 1fr) auto 52px;
   }
   .round-bar {
     display: none;

@@ -1,7 +1,36 @@
 // Best score per difficulty in localStorage. Wrapped in try/catch because
 // storage can be blocked (private windows, strict settings); the game still works.
 
+import { emptyProgress, parseProgress, type Progress } from "./review";
 import { QUALITIES, type Difficulty, type Quality } from "./types";
+
+const PROGRESS_KEY = "brain-atlas:progress";
+
+/** Review progress (Leitner boxes per region); empty if none saved or storage is blocked. */
+export function loadProgress(): Progress {
+  try {
+    return parseProgress(localStorage.getItem(PROGRESS_KEY));
+  } catch {
+    return emptyProgress();
+  }
+}
+
+export function saveProgress(progress: Progress): void {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  } catch {
+    // ignore: progress just won't be remembered
+  }
+}
+
+/** Forget review progress (best scores are kept). */
+export function resetProgress(): void {
+  try {
+    localStorage.removeItem(PROGRESS_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 const QUALITY_KEY = "brain-atlas:quality";
 

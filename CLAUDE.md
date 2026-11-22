@@ -30,11 +30,12 @@ web/                   Vite + TypeScript static site, no framework, no backend
   src/tree.ts          region-tree helpers (isWithin, descendantMask, regionAtLevel, breadcrumb)
   src/labelmap.ts      .bin.gz decoding, pixel lookup, click→slice coords, nearest target, pixel counts
   src/scoring.ts       distance → points, parent partial credit
-  src/game.ts          choosing rounds, rank titles
+  src/game.ts          choosing rounds (weighted, review rounds), rank titles
+  src/review.ts        spaced repetition: Leitner boxes, due regions, saved-progress parsing
   src/data.ts          fetching data files (lazy, cached per slice + quality)
   src/render.ts        canvas drawing (stage, overlay layers, pin, line)
   src/ui.ts            DOM helpers (animations, count-up, confetti)
-  src/storage.ts       best scores + quality setting in localStorage
+  src/storage.ts       best scores, quality setting and review progress in localStorage
   src/play.ts          game screen    src/study.ts   study mode
   src/main.ts          entry: menu + screen switching
   src/style.css        the whole look (colour variables at the top)
@@ -146,7 +147,9 @@ installed Chrome (scripts kept outside the repo).
   - asked on a slice only if area ≥ 0.5 / 0.3 / 0.05 mm² (easy / medium / hard);
     the medium nuclei use 0.05 mm² (PVH, SCH, LC never reach 0.3). Askable: easy 14,
     medium 109 of 113, hard 295 of 314.
-- A game asks each region once before any repeats, never the same twice in a row.
+- Rounds pick a **region first** (weighted by its review box, see below), then a random
+  slice where it can be asked. A game asks each region once before any repeats, never
+  the same twice in a row.
 - Distance = click to nearest point of any pixel within the target (either hemisphere),
   measured to pixel edges (click inside → 0). Points = round(1000·exp(−d / 0.75 mm)).
 - Partial credit: click inside the target's parent → at least 250, only if the parent
@@ -157,6 +160,21 @@ installed Chrome (scripts kept outside the repo).
   region of the current level containing it (`tree.ts:regionAtLevel`).
 - 10 rounds; best score per level in localStorage `brain-atlas:best-score:<level>`;
   quality in `brain-atlas:quality`. Final screen shows a rank title (`game.ts:RANKS`).
+
+## Review / spaced repetition (M4, `review.ts`)
+- Every answered region gets a record in localStorage `brain-atlas:progress`
+  (`{version: 1, gamesPlayed, regions: {<Allen id>: {box, tries, hits, lastGame, lastPoints}}}`),
+  keyed by **Allen id** (stable across data rebuilds), shared by all levels.
+- Leitner boxes 1–5: hit (≥ 750 pts) → box + 1; miss (< 400) → box 1; between → stays
+  (first answer: miss → 1, otherwise → 2). Box ≥ 4 = "mastered".
+- Due when `gamesPlayed − lastGame ≥ [0, 1, 2, 4, 8]` for boxes 1–5 — counted in games,
+  not days. `gamesPlayed` increases when a game (normal or review) starts.
+- Normal games weight regions by box: unseen 3, box 1 → 6, 2 → 4, 3 → 2, 4 → 1, 5 → 0.5.
+- Review game: up to 10 due regions, most urgent first (lowest box, oldest, worst last
+  answer), shuffled; each asked at the easiest level that includes it; no best score.
+- Shown: due count on the Review card, "mastered X / Y" per level card, badges on the
+  end screen (→ review / ↑ learning / ★ mastered), "Your record" line in study mode.
+  "Reset review progress" on the menu clears records (best scores kept).
 
 ## Study mode
 Slider/←→ over all 36 slices; detail level Divisions/Areas/Detailed = easy/medium/hard
@@ -177,7 +195,7 @@ public release, consider confirming with terms@alleninstitute.org.
 - [x] M2 difficulty levels, small-region filter, 36 slices, lazy loading
 - [x] M3 study mode; plus: Brain Darts redesign, 10 µm "Sharp" images, medium nuclei,
       partial-credit size limit, no-repeat rounds
-- [ ] M4 review / spaced repetition of missed regions
+- [x] M4 review / spaced repetition of missed regions
 - [ ] M5 deploy to GitHub Pages
 - [ ] M6 human atlas (start with a short source check: Allen human reference atlas plates)
 - [ ] Later: sagittal/horizontal planes, "name this region" mode, optional Nissl view

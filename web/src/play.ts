@@ -1,38 +1,67 @@
-// The game screen: 10 rounds, click → score → reveal → next.
-// Game logic lives in game.ts, scoring.ts and labelmap.ts; this file wires
-// it to the page.
+// The game screen: 10 rounds, click → score → reveal → next. Also review
+// games (the regions you are weakest at). Game logic lives in game.ts,
+// scoring.ts, review.ts and labelmap.ts; this file wires it to the page.
 
 import { loadSlice, type AtlasIndex, type LoadedSlice } from "./data";
-import { makeRounds, rankFor, ROUNDS_PER_GAME, type Round } from "./game";
+import { makeReviewRounds, makeRounds, rankFor, type Round } from "./game";
 import { countPixels, labelAt, nearestTargetPoint, OUTSIDE, screenToSlice } from "./labelmap";
 import { drawBase, drawLayer, drawLine, drawPin, drawTargetPoint, makeStage, regionLayer, type Stage } from "./render";
+import { dueRegions, HIT_POINTS, MASTERED_BOX, MISS_POINTS, updateRecord, weightFor, type Progress } from "./review";
 import { MAX_POINTS, scoreClick, type Score } from "./scoring";
-import { getBestScore, getQuality, recordScore } from "./storage";
+import { getBestScore, getQuality, loadProgress, recordScore, saveProgress } from "./storage";
 import { descendantMask, displayName, regionAtLevel } from "./tree";
-import type { Difficulty } from "./types";
+import { DIFFICULTIES, type Difficulty } from "./types";
 import { animate, confetti, countUp, el, formatNumber } from "./ui";
 
-const MAX_TOTAL = ROUNDS_PER_GAME * MAX_POINTS;
+type Mode = Difficulty | "review";
+
+interface Result {
+  target: string;
+  points: number;
+  /** What happened to the region's review box. */
+  change: "to-review" | "up" | "mastered" | "same";
+}
 
 let atlas: AtlasIndex;
 let showScreen: (name: string) => void;
-let difficulty: Difficulty = "easy";
+let mode: Mode = "easy";
 let rounds: Round[] = [];
 let roundNumber = 0; // 0-based
 let total = 0;
 let current: LoadedSlice | null = null; // slice on screen; null while loading
 let stage: Stage | null = null;
 let answered = false;
-const results: { target: string; points: number }[] = [];
+let progress: Progress;
+const results: Result[] = [];
+/** Every region that can be asked on some slice at some level (structure indices). */
+let askable: number[] = [];
 
 const canvas = () => el<HTMLCanvasElement>("game-canvas");
+const maxTotal = () => rounds.length * MAX_POINTS;
+const idOf = (index: number) => atlas.structures[index].id;
+
+/** Regions due for review right now (structure indices), most urgent first. */
+export function reviewQueue(p: Progress = loadProgress()): number[] {
+  const byId = new Map(askable.map((i) => [idOf(i), i]));
+  return dueRegions(p, byId.keys()).map((id) => byId.get(id)!);
+}
+
+/** Region indices that can be asked at a level (for "mastered X / Y" on the menu). */
+export function askableAt(level: Difficulty): Set<number> {
+  return new Set(atlas.slices.flatMap((s) => s.targets[level]));
+}
 
 export function initPlay(index: AtlasIndex, show: (name: string) => void): void {
   atlas = index;
   showScreen = show;
+  askable = [...new Set(DIFFICULTIES.flatMap((level) => [...askableAt(level)]))];
   canvas().addEventListener("click", handleClick);
   el("next-btn").addEventListener("click", nextRound);
-  el("again-btn").addEventListener("click", () => startGame(difficulty));
+  el("again-btn").addEventListener("click", () => {
+    if (mode !== "review") startGame(mode);
+    else if (reviewQueue().length > 0) startReview();
+    else showScreen("menu");
+  });
   document.addEventListener("keydown", (e) => {
     // Space / Enter for "next", unless a button already has focus (it handles the key itself).
     if ((e.key === " " || e.key === "Enter") && !el("result").hidden && !(document.activeElement instanceof HTMLButtonElement)) {
@@ -42,19 +71,35 @@ export function initPlay(index: AtlasIndex, show: (name: string) => void): void 
   });
 }
 
+/** A normal game: weak regions (low review box) come up more often. */
 export function startGame(level: Difficulty): void {
-  difficulty = level;
-  rounds = makeRounds(atlas.slices, difficulty);
+  progress = loadProgress();
+  const weight = (i: number) => weightFor(progress.regions[idOf(i)]);
+  begin(level, makeRounds(atlas.slices, level, undefined, Math.random, weight));
+}
+
+/** A review game: up to 10 of the regions due for review. */
+export function startReview(): void {
+  progress = loadProgress();
+  begin("review", makeReviewRounds(atlas.slices, reviewQueue(progress)));
+}
+
+function begin(newMode: Mode, newRounds: Round[]): void {
+  if (newRounds.length === 0) return; // nothing to review
+  mode = newMode;
+  rounds = newRounds;
   roundNumber = 0;
   total = 0;
   results.length = 0;
-  el("hud-level").textContent = level;
+  progress.gamesPlayed++; // answers in this game are stamped with this game number
+  saveProgress(progress);
+  el("hud-level").textContent = mode;
   showScreen("play");
   void startRound();
 }
 
 function updateHud(): void {
-  el("hud-round").textContent = `${roundNumber + 1} / ${ROUNDS_PER_GAME}`;
+  el("hud-round").textContent = `${roundNumber + 1} / ${rounds.length}`;
   el("hud-score").textContent = formatNumber(total);
 }
 
@@ -107,7 +152,18 @@ function handleClick(event: MouseEvent): void {
 
   answered = true;
   total += score.points;
-  results.push({ target: displayName(structures[targetIndex]), points: score.points });
+  // Spaced repetition: update this region's review box and save right away.
+  const id = idOf(targetIndex);
+  const before = progress.regions[id]?.box ?? 0;
+  const record = updateRecord(progress.regions[id], score.points, progress.gamesPlayed);
+  progress.regions[id] = record;
+  saveProgress(progress);
+  const change: Result["change"] =
+    score.points < MISS_POINTS ? "to-review"
+    : record.box >= MASTERED_BOX && before < MASTERED_BOX ? "mastered"
+    : record.box > before && score.points >= HIT_POINTS ? "up"
+    : "same";
+  results.push({ target: displayName(structures[targetIndex]), points: score.points, change });
   canvas().classList.remove("active");
   void reveal(stage, image, labels, targetIndex, click, nearest.point, score, clickedIndex);
 }
@@ -162,7 +218,7 @@ function showResult(score: Score, clickedIndex: number): void {
   updateHud();
   if (score.distanceMm === 0) confetti(el("game-stage"));
   const next = el<HTMLButtonElement>("next-btn");
-  next.textContent = roundNumber + 1 < ROUNDS_PER_GAME ? "Next round" : "See results";
+  next.textContent = roundNumber + 1 < rounds.length ? "Next round" : "See results";
   next.focus({ preventScroll: true }); // so Enter / Space moves on
 }
 
@@ -171,7 +227,7 @@ function describeClick(clickedIndex: number): string {
   if (clickedIndex === OUTSIDE) return "You clicked outside the brain.";
   const { structures } = atlas;
   const exact = displayName(structures[clickedIndex]);
-  const atLevel = regionAtLevel(clickedIndex, atlas.levels[difficulty], structures);
+  const atLevel = regionAtLevel(clickedIndex, atlas.levels[rounds[roundNumber].level], structures);
   if (atLevel === null || atLevel === clickedIndex) return `You clicked: ${exact}.`;
   return `You clicked: ${exact} (part of ${displayName(structures[atLevel])}).`;
 }
@@ -184,21 +240,41 @@ function describeCredit(creditedParent: number | null): string {
 function nextRound(): void {
   if (el("result").hidden) return;
   roundNumber++;
-  if (roundNumber < ROUNDS_PER_GAME) {
+  if (roundNumber < rounds.length) {
     void startRound();
   } else {
     endGame();
   }
 }
 
+const BADGES: Record<Result["change"], string> = {
+  "to-review": "→ review",
+  up: "↑ learning",
+  mastered: "★ mastered",
+  same: "",
+};
+
 function endGame(): void {
-  const isBest = recordScore(difficulty, total);
   showScreen("end");
-  el("end-level").textContent = `${difficulty} · ${ROUNDS_PER_GAME} rounds`;
-  el("rank").textContent = rankFor(total, MAX_TOTAL);
-  const best = getBestScore(difficulty);
-  el("best-end").textContent = isBest ? "New personal best!" : `Your best: ${formatNumber(best ?? 0)}`;
-  el("best-end").classList.toggle("new-best", isBest);
+  el("end-level").textContent = `${mode} · ${rounds.length} rounds`;
+  el("final-max").textContent = `/ ${formatNumber(maxTotal())}`;
+  el("rank").textContent = rankFor(total, maxTotal());
+  const again = el("again-btn");
+  if (mode === "review") {
+    // Practice: no best score. Say how it went and what is still due.
+    const good = results.filter((r) => r.points >= HIT_POINTS).length;
+    const left = reviewQueue(progress).length;
+    el("best-end").textContent =
+      `${good} of ${results.length} answered well · ` + (left > 0 ? `${left} still due for review` : "nothing left to review");
+    el("best-end").classList.remove("new-best");
+    again.textContent = left > 0 ? "Review more" : "Back to menu";
+  } else {
+    const isBest = recordScore(mode, total);
+    const best = getBestScore(mode);
+    el("best-end").textContent = isBest ? "New personal best!" : `Your best: ${formatNumber(best ?? 0)}`;
+    el("best-end").classList.toggle("new-best", isBest);
+    again.textContent = "Play again";
+  }
   void countUp(el("final-score"), total, 1200);
   el("summary").replaceChildren(
     ...results.map((r, i) => {
@@ -211,9 +287,12 @@ function endGame(): void {
       const fill = document.createElement("span");
       fill.style.width = `${(r.points / MAX_POINTS) * 100}%`;
       bar.append(fill);
+      const badge = document.createElement("span");
+      badge.className = `badge badge-${r.change}`;
+      badge.textContent = BADGES[r.change];
       const pts = document.createElement("b");
       pts.textContent = formatNumber(r.points);
-      li.append(name, bar, pts);
+      li.append(name, bar, badge, pts);
       return li;
     }),
   );

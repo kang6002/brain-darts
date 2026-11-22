@@ -4,7 +4,8 @@
 import { loadSlice, type AtlasIndex, type LoadedSlice } from "./data";
 import { labelAt, OUTSIDE, screenToSlice } from "./labelmap";
 import { atlasLayer, drawBase, drawLayer, makeStage, packColor, type Stage } from "./render";
-import { getQuality } from "./storage";
+import { isDue, MASTERED_BOX, MAX_BOX, emptyProgress, type Progress } from "./review";
+import { getQuality, loadProgress } from "./storage";
 import { breadcrumb, descendantMask, displayName, levelLookup } from "./tree";
 import { DIFFICULTIES, type Difficulty } from "./types";
 import { el } from "./ui";
@@ -23,6 +24,7 @@ let stage: Stage | null = null;
 let hovered: number | null = null; // region under the pointer
 let pinned: number | null = null; // region chosen by click, tap or search
 let loadToken = 0;
+let progress: Progress = emptyProgress();
 const groupOfCache = new Map<Difficulty, Uint16Array>();
 const colorCache = new Map<Difficulty, Uint32Array>();
 const searchIndex = new Map<string, number>(); // datalist text → region index
@@ -107,6 +109,7 @@ export function initStudy(index: AtlasIndex): void {
 }
 
 export function openStudy(): void {
+  progress = loadProgress(); // your review records, shown in the info panel
   if (!current) sliceIndex = Math.floor(atlas.slices.length / 2);
   void showSlice(sliceIndex, true);
 }
@@ -211,6 +214,7 @@ function updateInfo(): void {
   const levels = DIFFICULTIES.filter((d) => atlas.levels[d].has(shown));
   quiz.textContent = levels.length ? `Asked in: ${levels.join(", ")}` : "Not asked in the game at any level";
   const parts: HTMLElement[] = [title, chip, path, quiz];
+  if (levels.length) parts.push(recordLine(s.id));
   const best = atlas.bestSlice.get(shown);
   const bestIndex = atlas.slices.findIndex((m) => m.id === best);
   if (bestIndex >= 0 && bestIndex !== sliceIndex) {
@@ -224,6 +228,21 @@ function updateInfo(): void {
     parts.push(go);
   }
   info.replaceChildren(...parts);
+}
+
+/** "Your record: 3 tries · 2 hits · box 2 of 5 · due for review" */
+function recordLine(allenId: number): HTMLElement {
+  const line = document.createElement("p");
+  line.className = "record";
+  const r = progress.regions[allenId];
+  if (!r) {
+    line.textContent = "Your record: not asked yet";
+    return line;
+  }
+  const status = isDue(r, progress.gamesPlayed) ? "due for review" : r.box >= MASTERED_BOX ? "mastered" : "learning";
+  line.textContent = `Your record: ${r.tries} ${r.tries === 1 ? "try" : "tries"} · ${r.hits} ${r.hits === 1 ? "hit" : "hits"} · box ${r.box} of ${MAX_BOX} · ${status}`;
+  line.dataset.status = status;
+  return line;
 }
 
 function findRegion(text: string): void {
