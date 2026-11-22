@@ -1,7 +1,7 @@
 # Brain Darts
 
-A neuroanatomy game for mouse brain slices. We name a brain region, you throw the
-dart (click where you think it is), and you score points by how close you land.
+A neuroanatomy game for mouse and human brain slices. We name a brain region, you
+throw the dart (click where you think it is), and you score points by how close you land.
 Three difficulty levels from major divisions down to small nuclei, a review mode
 that brings back the regions you miss (spaced repetition), and a study mode to
 browse every slice and look up any region.
@@ -16,7 +16,8 @@ cd pipeline
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python build_atlas.py     # first run downloads ~410 MB of Allen data
+python build_atlas.py     # mouse: first run downloads ~410 MB of Allen data
+python build_human.py     # human: first run downloads ~104 MB of Allen data
 pytest
 cd ..
 
@@ -29,8 +30,12 @@ npm run dev      # then open the printed URL, usually http://localhost:5173
 
 ## Data
 
-Allen Mouse Brain Common Coordinate Framework v3 (CCFv3), © Allen Institute.
+Mouse: Allen Mouse Brain Common Coordinate Framework v3 (CCFv3), © Allen Institute.
 Wang Q. et al. (2020) *Cell* 181(4):936–953, doi:10.1016/j.cell.2020.04.007.
+
+Human: Allen Human Reference Atlas, © Allen Institute. Ding S.-L. et al. (2016)
+*J. Comp. Neurol.* 524(16):3127–3481, doi:10.1002/cne.24080.
+
 Used under the [Allen Institute Terms of Use](https://alleninstitute.org/terms-of-use/).
 This project is not affiliated with or endorsed by the Allen Institute.
 

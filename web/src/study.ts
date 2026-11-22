@@ -1,8 +1,10 @@
 // Study mode: browse every slice, hover (or tap) to name regions, show
 // outlines or atlas colours at a chosen level of detail, search a region.
+// Works for both species; the human atlas also has two cortex maps
+// (gyri / Brodmann areas) to switch between.
 
 import { loadSlice, type AtlasIndex, type LoadedSlice } from "./data";
-import { labelAt, OUTSIDE, screenToSlice } from "./labelmap";
+import { labelAt, OUTSIDE, screenToSlice, type LabelMap } from "./labelmap";
 import { atlasLayer, drawBase, drawLayer, makeStage, packColor, type Stage } from "./render";
 import { isDue, MASTERED_BOX, MAX_BOX, emptyProgress, type Progress } from "./review";
 import { getQuality, loadProgress } from "./storage";
@@ -15,10 +17,12 @@ const LEVEL_NOTES: Record<Difficulty, string> = {
   medium: "areas and classic nuclei (medium level)",
   hard: "detailed nuclei and fields (hard level)",
 };
+const MAP_NAMES: Record<string, string> = { gyral: "gyri", brodmann: "Brodmann areas" };
 
 let atlas: AtlasIndex;
 let sliceIndex = 0;
 let level: Difficulty = "medium";
+let map = "default"; // which label map is shown (human: "gyral" or "brodmann")
 let current: LoadedSlice | null = null;
 let stage: Stage | null = null;
 let hovered: number | null = null; // region under the pointer
@@ -30,6 +34,8 @@ const colorCache = new Map<Difficulty, Uint32Array>();
 const searchIndex = new Map<string, number>(); // datalist text → region index
 
 const canvas = () => el<HTMLCanvasElement>("study-canvas");
+const sliceWord = () => (atlas.species.id === "human" ? "Plate" : "Slice");
+const labels = (): LabelMap => current!.labels[map];
 
 function groupOf(): Uint16Array {
   let lookup = groupOfCache.get(level);
@@ -50,10 +56,9 @@ function groupColors(): Uint32Array {
   return colors;
 }
 
-export function initStudy(index: AtlasIndex): void {
-  atlas = index;
+/** Wire up the study screen once (the atlas is set separately per species). */
+export function initStudy(): void {
   const range = el<HTMLInputElement>("slice-range");
-  range.max = String(atlas.slices.length - 1);
   range.addEventListener("input", () => void showSlice(Number(range.value)));
   el("prev-slice").addEventListener("click", () => void showSlice(sliceIndex - 1));
   el("next-slice").addEventListener("click", () => void showSlice(sliceIndex + 1));
@@ -61,7 +66,20 @@ export function initStudy(index: AtlasIndex): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("#study-level button")) {
     button.addEventListener("click", () => {
       level = button.dataset.level as Difficulty;
-      updateLevelButtons();
+      map = atlas.species.mapForLevel[level]; // e.g. Detailed → Brodmann areas
+      updateButtons();
+      redraw();
+    });
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#study-map button")) {
+    button.addEventListener("click", () => {
+      // Map and detail level must agree: gyri only exist in the gyri map,
+      // Brodmann areas only in the Brodmann map. Keep the level if it fits,
+      // otherwise switch to the level that uses this map.
+      map = button.dataset.map!;
+      const { mapForLevel } = atlas.species;
+      if (mapForLevel[level] !== map) level = map === mapForLevel.medium ? "medium" : "hard";
+      updateButtons();
       redraw();
     });
   }
@@ -81,7 +99,35 @@ export function initStudy(index: AtlasIndex): void {
     redraw();
   });
 
+  const search = el<HTMLInputElement>("search");
+  search.addEventListener("change", () => findRegion(search.value));
+  search.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") findRegion(search.value);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (el("study").hidden || document.activeElement === search) return;
+    if (e.key === "ArrowLeft") void showSlice(sliceIndex - 1);
+    if (e.key === "ArrowRight") void showSlice(sliceIndex + 1);
+  });
+}
+
+/** Switch study mode to another species' atlas. */
+export function setStudyAtlas(index: AtlasIndex): void {
+  if (atlas === index) return;
+  atlas = index;
+  current = null;
+  stage = null;
+  hovered = pinned = null;
+  groupOfCache.clear();
+  colorCache.clear();
+  level = "medium";
+  map = atlas.species.mapForLevel[level];
+  el<HTMLInputElement>("slice-range").max = String(atlas.slices.length - 1);
+  el<HTMLInputElement>("search").value = "";
+  el("study-map-field").hidden = atlas.species.maps.length < 2;
+
   // Search: every region of any difficulty, as "Name (ACRONYM)".
+  searchIndex.clear();
   const options: HTMLOptionElement[] = [];
   const all = new Set([...atlas.levels.easy, ...atlas.levels.medium, ...atlas.levels.hard]);
   for (const i of [...all].sort((a, b) => atlas.structures[a].name.localeCompare(atlas.structures[b].name))) {
@@ -94,31 +140,24 @@ export function initStudy(index: AtlasIndex): void {
     options.push(option);
   }
   el("region-list").replaceChildren(...options);
-  const search = el<HTMLInputElement>("search");
-  search.addEventListener("change", () => findRegion(search.value));
-  search.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") findRegion(search.value);
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (el("study").hidden || document.activeElement === search) return;
-    if (e.key === "ArrowLeft") void showSlice(sliceIndex - 1);
-    if (e.key === "ArrowRight") void showSlice(sliceIndex + 1);
-  });
-  updateLevelButtons();
+  updateButtons();
 }
 
 export function openStudy(): void {
-  progress = loadProgress(); // your review records, shown in the info panel
+  progress = loadProgress(atlas.species.id); // your review records, shown in the info panel
   if (!current) sliceIndex = Math.floor(atlas.slices.length / 2);
   void showSlice(sliceIndex, true);
 }
 
-function updateLevelButtons(): void {
+function updateButtons(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("#study-level button")) {
     button.setAttribute("aria-pressed", String(button.dataset.level === level));
   }
-  el("level-note").textContent = `Outlines and colours show ${LEVEL_NOTES[level]}.`;
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#study-map button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.map === map));
+  }
+  const cortex = MAP_NAMES[map] ? `; cortex shown as ${MAP_NAMES[map]}` : "";
+  el("level-note").textContent = `Outlines and colours show ${LEVEL_NOTES[level]}${cortex}.`;
 }
 
 async function showSlice(i: number, force = false): Promise<void> {
@@ -127,29 +166,32 @@ async function showSlice(i: number, force = false): Promise<void> {
   sliceIndex = i;
   el<HTMLInputElement>("slice-range").value = String(i);
   const meta = atlas.slices[i];
-  el("study-slice-info").textContent = `Slice ${i + 1} of ${atlas.slices.length} · ${meta.apMm.toFixed(2)} mm from the front`;
+  el("study-slice-info").textContent = atlas.species.id === "human"
+    ? `Plate ${i + 1} of ${atlas.slices.length} · ${meta.apMm.toFixed(1)} mm behind the first plate`
+    : `Slice ${i + 1} of ${atlas.slices.length} · ${meta.apMm.toFixed(2)} mm from the front`;
   const token = ++loadToken;
   el("study-loading").hidden = false;
-  const loaded = await loadSlice(meta, getQuality());
+  const loaded = await loadSlice(atlas, meta, getQuality());
   if (token !== loadToken) return; // a newer slice was requested meanwhile
   el("study-loading").hidden = true;
   current = loaded;
+  el("study").style.setProperty("--aspect", String(loaded.variant.width / loaded.variant.height));
   stage = makeStage(canvas(), loaded.variant.width, loaded.variant.height);
   hovered = null;
   updateInfo();
   redraw();
   // Neighbours load in the background so the slider feels instant.
   for (const n of [i - 1, i + 1]) {
-    if (atlas.slices[n]) void loadSlice(atlas.slices[n], getQuality()).catch(() => {});
+    if (atlas.slices[n]) void loadSlice(atlas, atlas.slices[n], getQuality()).catch(() => {});
   }
 }
 
 /** Region under the pointer at the chosen level (or the exact structure if no region of that level contains it). */
 function regionUnder(e: MouseEvent): number | null {
   if (!current) return null;
-  const { variant, labels } = current;
+  const { variant } = current;
   const p = screenToSlice(e.clientX, e.clientY, canvas().getBoundingClientRect(), variant.width, variant.height);
-  const label = labelAt(labels, p.x, p.y);
+  const label = labelAt(labels(), p.x, p.y);
   if (label === OUTSIDE) return null;
   return groupOf()[label] || label;
 }
@@ -181,7 +223,7 @@ function redraw(): void {
   if (!current || !stage) return;
   const shown = hovered ?? pinned;
   drawBase(stage, current.image);
-  const layer = atlasLayer(current.labels, {
+  const layer = atlasLayer(labels(), {
     groupOf: groupOf(),
     outlines: el<HTMLInputElement>("show-outlines").checked,
     groupColors: el<HTMLInputElement>("show-colors").checked ? groupColors() : null,
@@ -220,7 +262,7 @@ function updateInfo(): void {
   if (bestIndex >= 0 && bestIndex !== sliceIndex) {
     const go = document.createElement("button");
     go.className = "ghost small-btn";
-    go.textContent = `Show where it is largest (slice ${bestIndex + 1})`;
+    go.textContent = `Show where it is largest (${sliceWord().toLowerCase()} ${bestIndex + 1})`;
     go.addEventListener("click", () => {
       pinned = shown;
       void showSlice(bestIndex);
@@ -249,6 +291,15 @@ function findRegion(text: string): void {
   const region = searchIndex.get(text.trim().toLowerCase());
   if (region === undefined) return;
   pinned = region;
+  // Show it on the map where it exists: gyri and lobes only exist in the gyri
+  // map, Brodmann areas only in the Brodmann map (human). Use the map of the
+  // easiest level that asks this region.
+  const easiest = DIFFICULTIES.find((d) => atlas.levels[d].has(region));
+  if (easiest) {
+    level = easiest;
+    map = atlas.species.mapForLevel[easiest];
+    updateButtons();
+  }
   const best = atlas.bestSlice.get(region);
   const i = atlas.slices.findIndex((m) => m.id === best);
   if (i >= 0) void showSlice(i, true);

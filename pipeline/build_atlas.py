@@ -25,23 +25,20 @@ Data sources (verified 2026-11-22, see CLAUDE.md):
 from __future__ import annotations
 
 import json
-import shutil
-import ssl
 import sys
-import urllib.request
 from pathlib import Path
 
-import certifi
 import nrrd
 import numpy as np
 from PIL import Image
 
 import atlas_lib as lib
+from net import fetch
 from stream_nrrd import read_coronal_slices
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
-OUT = HERE.parent / "web" / "public" / "data"
+OUT = HERE.parent / "web" / "public" / "data" / "mouse"
 
 CCF = "https://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf"
 API = "https://api.brain-map.org/api/v2/data/query.json"
@@ -112,20 +109,7 @@ RES = {"25um": 0.025, "10um": 0.010}
 
 
 def download(name: str) -> Path:
-    path = CACHE / name
-    if path.exists():
-        return path
-    CACHE.mkdir(exist_ok=True)
-    url = SOURCES[name]
-    print(f"downloading {url}")
-    tmp = path.with_suffix(path.suffix + ".part")
-    # certifi supplies trusted root certificates; the python.org macOS
-    # installer does not set them up by default (CERTIFICATE_VERIFY_FAILED).
-    context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(url, context=context) as response, open(tmp, "wb") as f:
-        shutil.copyfileobj(response, f)
-    tmp.rename(path)
-    return path
+    return fetch(SOURCES[name], CACHE / name)
 
 
 def check_orientation(annotation: np.ndarray, structures: list[dict]) -> None:
@@ -210,7 +194,7 @@ def save_variant(name: str, res: str, template: np.ndarray, labels: np.ndarray,
     lib.write_label_bin(OUT / f"{name}_{res}.bin.gz", labels)
     height, width = labels.shape
     return {"width": width, "height": height, "mmPerPixel": RES[res],
-            "image": f"{name}_{res}.png", "labels": f"{name}_{res}.bin.gz"}
+            "image": f"{name}_{res}.png", "labels": {"default": f"{name}_{res}.bin.gz"}}
 
 
 def main() -> None:
@@ -280,9 +264,9 @@ def main() -> None:
             "plane": "coronal",
             "index": ap,
             "apMm": round(ap * RES["25um"], 3),
-            "variants": {
-                "25um": save_variant(name, "25um", template[ap], l25, low25, high25),
-                "10um": save_variant(name, "10um", tpl10[k], l10, low10, high10),
+            "variants": {  # "sharp" / "light" quality in the game's menu
+                "sharp": save_variant(name, "10um", tpl10[k], l10, low10, high10),
+                "light": save_variant(name, "25um", template[ap], l25, low25, high25),
             },
             "regions": f"{name}.regions.json",
             "targets": targets,
@@ -300,6 +284,11 @@ def main() -> None:
 
     (OUT / "structures.json").write_text(json.dumps(structures, separators=(",", ":")))
     (OUT / "slices.json").write_text(json.dumps({
+        "species": {
+            "id": "mouse", "name": "Mouse", "plates": len(slices), "planeLabel": "Coronal slice",
+            "maps": ["default"], "mapForLevel": {level: "default" for level in candidates},
+            "decayMm": 0.75,  # points fall to 37 % at this distance
+        },
         "source": {
             "atlas": "Allen Mouse Brain Common Coordinate Framework v3 (CCFv3), 2017 annotation",
             "files": SOURCES,

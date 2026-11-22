@@ -18,9 +18,12 @@ export const MIN_PARENT_DEPTH = 2;
  */
 export const MAX_PARENT_AREA_RATIO = 4;
 
-/** 0 mm → 1000, 0.5 mm → 513, 1 mm → 264, 2 mm → 69. */
-export function distancePoints(distanceMm: number): number {
-  return Math.round(MAX_POINTS * Math.exp(-Math.max(0, distanceMm) / DECAY_MM));
+/**
+ * Mouse (decay 0.75 mm): 0 mm → 1000, 0.5 mm → 513, 1 mm → 264, 2 mm → 69.
+ * The human brain is ~12× bigger, so it uses decay 5 mm: 2 mm → 670, 5 mm → 368.
+ */
+export function distancePoints(distanceMm: number, decayMm: number = DECAY_MM): number {
+  return Math.round(MAX_POINTS * Math.exp(-Math.max(0, distanceMm) / decayMm));
 }
 
 export interface Score {
@@ -40,8 +43,9 @@ export function scoreClick(
   targetIndex: number,
   structures: Structure[],
   areaPx: (index: number) => number,
+  decayMm: number = DECAY_MM,
 ): Score {
-  const points = distancePoints(distanceMm);
+  const points = distancePoints(distanceMm, decayMm);
   const parent = structures[targetIndex].parentIndex;
   if (
     points < PARENT_FLOOR &&

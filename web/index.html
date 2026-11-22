@@ -12,11 +12,15 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%237c5cff'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23120e2a'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd23f'/%3E%3C/svg%3E"
     />
   </head>
-  <body data-screen="menu">
+  <body data-screen="species">
     <header class="topbar">
       <button id="home-btn" class="logo" hidden aria-label="Back to menu">
         <span class="logo-mark" aria-hidden="true"></span><span>Brain<b>Darts</b></span>
       </button>
+      <div id="species-switch" class="segmented species-switch" role="group" aria-label="Species" hidden>
+        <button data-species="mouse">Mouse</button>
+        <button data-species="human">Human</button>
+      </div>
       <div id="hud" class="hud" hidden>
         <div class="pill"><small>Level</small><b id="hud-level"></b></div>
         <div class="pill"><small>Round</small><b id="hud-round"></b></div>
@@ -25,8 +29,34 @@
     </header>
 
     <main>
+      <!-- ============================== SPECIES PICKER ============================== -->
+      <section id="species" class="screen">
+        <div class="hero">
+          <span class="logo-mark big" aria-hidden="true"></span>
+          <h1 class="title">Brain<span>Darts</span></h1>
+          <p class="tagline">We name a brain region. You throw the dart.<br />How close can you get?</p>
+        </div>
+        <h2 class="section-label">Pick your brain</h2>
+        <div class="species-tiles">
+          <button class="species-tile" data-species="mouse">
+            <img id="thumb-mouse" alt="" />
+            <span class="species-text">
+              <strong>Mouse</strong>
+              <span class="desc">36 coronal slices of the Allen mouse brain atlas, 3 levels from major divisions to small nuclei.</span>
+            </span>
+          </button>
+          <button class="species-tile" data-species="human">
+            <img id="thumb-human" alt="" />
+            <span class="species-text">
+              <strong>Human</strong>
+              <span class="desc">106 Nissl-stained plates of an adult human hemisphere: lobes, gyri, nuclei and Brodmann areas.</span>
+            </span>
+          </button>
+        </div>
+      </section>
+
       <!-- ============================== MENU ============================== -->
-      <section id="menu" class="screen">
+      <section id="menu" class="screen" hidden>
         <div class="hero">
           <span class="logo-mark big" aria-hidden="true"></span>
           <h1 class="title">Brain<span>Darts</span></h1>
@@ -34,26 +64,26 @@
           <p id="status" class="status">Loading atlas…</p>
         </div>
 
-        <h2 class="section-label">Play · 10 rounds</h2>
+        <h2 class="section-label">Play · <span id="menu-species">Mouse</span> · 10 rounds</h2>
         <div class="levels">
           <button class="level level-easy" data-difficulty="easy" disabled>
             <span class="pips" aria-hidden="true"><i class="on"></i><i></i><i></i></span>
             <strong>Easy</strong>
-            <span class="desc">Major divisions: isocortex, thalamus, cerebellum…</span>
+            <span class="desc" data-desc="easy"></span>
             <span class="mastery" data-mastery="easy"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="easy"></span>
           </button>
           <button class="level level-medium" data-difficulty="medium" disabled>
             <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>
             <strong>Medium</strong>
-            <span class="desc">Cortical areas and classic nuclei: VPM, SNr, PVH, CA1…</span>
+            <span class="desc" data-desc="medium"></span>
             <span class="mastery" data-mastery="medium"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="medium"></span>
           </button>
           <button class="level level-hard" data-difficulty="hard" disabled>
             <span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>
             <strong>Hard</strong>
-            <span class="desc">Almost 300 nuclei and fields, down to the small ones.</span>
+            <span class="desc" data-desc="hard"></span>
             <span class="mastery" data-mastery="hard"><span class="mastery-bar"><i></i></span><small></small></span>
             <span class="best" data-best="hard"></span>
           </button>
@@ -89,10 +119,11 @@
         <div class="settings">
           <span>Image quality</span>
           <div class="segmented" id="quality" role="group" aria-label="Image quality">
-            <button data-quality="10um">Sharp · 10 µm</button>
-            <button data-quality="25um">Light · 25 µm</button>
+            <button data-quality="sharp">Sharp</button>
+            <button data-quality="light">Light (faster)</button>
           </div>
           <button id="reset-btn" class="text-btn">Reset review progress</button>
+          <button id="pick-species" class="text-btn">Choose another brain</button>
         </div>
       </section>
 
@@ -172,6 +203,13 @@
               </div>
               <small id="level-note" class="muted"></small>
             </div>
+            <div class="field" id="study-map-field" hidden>
+              <span>Cortex map</span>
+              <div class="segmented" id="study-map" role="group" aria-label="Cortex map">
+                <button data-map="gyral">Gyri</button>
+                <button data-map="brodmann">Brodmann areas</button>
+              </div>
+            </div>
             <div class="toggles">
               <label class="toggle"><input type="checkbox" id="show-outlines" checked /> Outlines</label>
               <label class="toggle"><input type="checkbox" id="show-colors" /> Atlas colours</label>
@@ -183,6 +221,7 @@
     </main>
 
     <footer>
+      <div class="credit credit-mouse">
       <p>
         Atlas data: Allen Mouse Brain Common Coordinate Framework v3 (CCFv3), © Allen Institute.
         Wang Q. et al. (2020) <em>Cell</em> 181(4):936–953,
@@ -197,6 +236,23 @@
         (<a href="https://alleninstitute.org/citation-policy/">citation policy</a>).
         Brain Darts is an independent educational project, not affiliated with or endorsed by the Allen Institute.
       </p>
+      </div>
+      <div class="credit credit-human">
+        <p>
+          Human atlas: Allen Human Reference Atlas (adult, 34-year-old donor), © Allen Institute.
+          Ding S.-L. et al. (2016) Comprehensive cellular-resolution atlas of the adult human brain.
+          <em>J. Comp. Neurol.</em> 524(16):3127–3481,
+          <a href="https://doi.org/10.1002/cne.24080">doi:10.1002/cne.24080</a>.
+          Available from <a href="https://atlas.brain-map.org">atlas.brain-map.org</a>.
+          Image credit: Allen Institute. Nissl plates and region outlines from the
+          <a href="https://api.brain-map.org">Allen Brain Map API</a> (atlas 138322605).
+        </p>
+        <p>
+          Used under the <a href="https://alleninstitute.org/terms-of-use/">Allen Institute Terms of Use</a>
+          (<a href="https://alleninstitute.org/citation-policy/">citation policy</a>).
+          Brain Darts is an independent educational project, not affiliated with or endorsed by the Allen Institute.
+        </p>
+      </div>
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

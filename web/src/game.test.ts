@@ -3,9 +3,9 @@ import { makeReviewRounds, makeRounds, pickWeighted, rankFor } from "./game";
 import type { SliceMeta, Variant } from "./types";
 
 function slice(id: string, easy: number[], hard: number[] = []): SliceMeta {
-  const variant: Variant = { width: 1, height: 1, mmPerPixel: 0.025, image: "", labels: "" };
+  const variant: Variant = { width: 1, height: 1, mmPerPixel: 0.025, image: "", labels: { default: "" } };
   return {
-    id, plane: "coronal", index: 0, apMm: 0, variants: { "25um": variant, "10um": variant },
+    id, plane: "coronal", index: 0, apMm: 0, variants: { sharp: variant, light: variant },
     regions: "", targets: { easy, medium: [], hard },
   };
 }

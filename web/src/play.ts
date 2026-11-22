@@ -2,7 +2,7 @@
 // games (the regions you are weakest at). Game logic lives in game.ts,
 // scoring.ts, review.ts and labelmap.ts; this file wires it to the page.
 
-import { loadSlice, type AtlasIndex, type LoadedSlice } from "./data";
+import { loadSlice, sliceCaption, type AtlasIndex, type LoadedSlice } from "./data";
 import { makeReviewRounds, makeRounds, rankFor, type Round } from "./game";
 import { countPixels, labelAt, nearestTargetPoint, OUTSIDE, screenToSlice } from "./labelmap";
 import { drawBase, drawLayer, drawLine, drawPin, drawTargetPoint, makeStage, regionLayer, type Stage } from "./render";
@@ -40,8 +40,10 @@ const canvas = () => el<HTMLCanvasElement>("game-canvas");
 const maxTotal = () => rounds.length * MAX_POINTS;
 const idOf = (index: number) => atlas.structures[index].id;
 
+const species = () => atlas.species.id;
+
 /** Regions due for review right now (structure indices), most urgent first. */
-export function reviewQueue(p: Progress = loadProgress()): number[] {
+export function reviewQueue(p: Progress = loadProgress(species())): number[] {
   const byId = new Map(askable.map((i) => [idOf(i), i]));
   return dueRegions(p, byId.keys()).map((id) => byId.get(id)!);
 }
@@ -51,10 +53,15 @@ export function askableAt(level: Difficulty): Set<number> {
   return new Set(atlas.slices.flatMap((s) => s.targets[level]));
 }
 
-export function initPlay(index: AtlasIndex, show: (name: string) => void): void {
+/** Switch the game to another species' atlas (mouse or human). */
+export function setPlayAtlas(index: AtlasIndex): void {
   atlas = index;
-  showScreen = show;
   askable = [...new Set(DIFFICULTIES.flatMap((level) => [...askableAt(level)]))];
+}
+
+/** Wire up the game screen once (the atlas is set separately per species). */
+export function initPlay(show: (name: string) => void): void {
+  showScreen = show;
   canvas().addEventListener("click", handleClick);
   el("next-btn").addEventListener("click", nextRound);
   el("again-btn").addEventListener("click", () => {
@@ -73,14 +80,14 @@ export function initPlay(index: AtlasIndex, show: (name: string) => void): void 
 
 /** A normal game: weak regions (low review box) come up more often. */
 export function startGame(level: Difficulty): void {
-  progress = loadProgress();
+  progress = loadProgress(species());
   const weight = (i: number) => weightFor(progress.regions[idOf(i)]);
   begin(level, makeRounds(atlas.slices, level, undefined, Math.random, weight));
 }
 
 /** A review game: up to 10 of the regions due for review. */
 export function startReview(): void {
-  progress = loadProgress();
+  progress = loadProgress(species());
   begin("review", makeReviewRounds(atlas.slices, reviewQueue(progress)));
 }
 
@@ -92,7 +99,7 @@ function begin(newMode: Mode, newRounds: Round[]): void {
   total = 0;
   results.length = 0;
   progress.gamesPlayed++; // answers in this game are stamped with this game number
-  saveProgress(progress);
+  saveProgress(species(), progress);
   el("hud-level").textContent = mode;
   showScreen("play");
   void startRound();
@@ -122,33 +129,38 @@ async function startRound(): Promise<void> {
   prompt.classList.add("pop");
 
   const quality = getQuality();
-  const loaded = await loadSlice(round.slice, quality);
+  const loaded = await loadSlice(atlas, round.slice, quality);
   // While we waited, the player may have moved on (new round, new game, menu).
   if (rounds[roundNumber] !== round || el("play").hidden) return;
   current = loaded;
   el("game-loading").hidden = true;
-  el("slice-info").textContent =
-    `Coronal slice · ${loaded.meta.apMm.toFixed(2)} mm from the front of the atlas · dorsal is up`;
+  el("slice-info").textContent = sliceCaption(atlas, loaded.meta);
+  // Wide mouse slices and tall human plates: the layout sizes the frame by this ratio.
+  el("play").style.setProperty("--aspect", String(loaded.variant.width / loaded.variant.height));
   canvas().classList.add("active");
   stage = makeStage(canvas(), loaded.variant.width, loaded.variant.height);
   drawBase(stage, loaded.image);
 
   // Download the next round's slice while the player thinks.
   const next = rounds[roundNumber + 1];
-  if (next) void loadSlice(next.slice, quality).catch(() => {}); // errors resurface when it is needed
+  if (next) void loadSlice(atlas, next.slice, quality).catch(() => {}); // errors resurface when it is needed
 }
 
 function handleClick(event: MouseEvent): void {
   if (answered || !current || !stage) return;
-  const { meta, variant, image, labels } = current;
+  const { meta, variant, image } = current;
   const { structures } = atlas;
-  const targetIndex = rounds[roundNumber].target;
+  const round = rounds[roundNumber];
+  const targetIndex = round.target;
+  // Human: easy/medium questions use the gyri map, hard ones the Brodmann map.
+  const labels = current.labels[atlas.species.mapForLevel[round.level]];
   const click = screenToSlice(event.clientX, event.clientY, canvas().getBoundingClientRect(), variant.width, variant.height);
   const clickedIndex = labelAt(labels, click.x, click.y);
   const nearest = nearestTargetPoint(labels, targetIndex, structures, click.x, click.y);
   if (!nearest) throw new Error(`target ${targetIndex} is not on slice ${meta.id}`); // pipeline bug
   const areaPx = (i: number) => countPixels(labels, descendantMask(i, structures));
-  const score = scoreClick(nearest.distancePx * variant.mmPerPixel, clickedIndex, targetIndex, structures, areaPx);
+  const score = scoreClick(
+    nearest.distancePx * variant.mmPerPixel, clickedIndex, targetIndex, structures, areaPx, atlas.species.decayMm);
 
   answered = true;
   total += score.points;
@@ -157,7 +169,7 @@ function handleClick(event: MouseEvent): void {
   const before = progress.regions[id]?.box ?? 0;
   const record = updateRecord(progress.regions[id], score.points, progress.gamesPlayed);
   progress.regions[id] = record;
-  saveProgress(progress);
+  saveProgress(species(), progress);
   const change: Result["change"] =
     score.points < MISS_POINTS ? "to-review"
     : record.box >= MASTERED_BOX && before < MASTERED_BOX ? "mastered"
@@ -171,7 +183,7 @@ function handleClick(event: MouseEvent): void {
 async function reveal(
   s: Stage,
   image: HTMLImageElement,
-  labels: LoadedSlice["labels"],
+  labels: LoadedSlice["labels"][string],
   targetIndex: number,
   click: { x: number; y: number },
   point: { x: number; y: number },
@@ -256,7 +268,7 @@ const BADGES: Record<Result["change"], string> = {
 
 function endGame(): void {
   showScreen("end");
-  el("end-level").textContent = `${mode} · ${rounds.length} rounds`;
+  el("end-level").textContent = `${atlas.species.name} · ${mode} · ${rounds.length} rounds`;
   el("final-max").textContent = `/ ${formatNumber(maxTotal())}`;
   el("rank").textContent = rankFor(total, maxTotal());
   const again = el("again-btn");
@@ -269,8 +281,8 @@ function endGame(): void {
     el("best-end").classList.remove("new-best");
     again.textContent = left > 0 ? "Review more" : "Back to menu";
   } else {
-    const isBest = recordScore(mode, total);
-    const best = getBestScore(mode);
+    const isBest = recordScore(species(), mode, total);
+    const best = getBestScore(species(), mode);
     el("best-end").textContent = isBest ? "New personal best!" : `Your best: ${formatNumber(best ?? 0)}`;
     el("best-end").classList.toggle("new-best", isBest);
     again.textContent = "Play again";

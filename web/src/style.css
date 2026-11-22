@@ -255,6 +255,72 @@ input:focus-visible {
   color: var(--yellow);
 }
 
+/* ------------------------------------------------------------ species picker */
+
+.species-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.species-tile {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+  text-align: left;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s, border-color 0.12s;
+}
+
+.species-tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--yellow);
+}
+
+.species-tile img {
+  width: 140px;
+  height: 120px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #000;
+}
+
+.species-tile[data-species="human"] img {
+  background: #fff;
+}
+
+.species-tile strong {
+  display: block;
+  font-size: 1.8rem;
+  font-weight: 900;
+  font-style: italic;
+  text-transform: uppercase;
+}
+
+.species-tile .desc {
+  color: var(--muted);
+}
+
+.species-switch {
+  margin-right: auto;
+}
+
+.species-switch button {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
+/* Footer: show the credits of the species on screen (both on the picker) */
+body[data-species="mouse"] .credit-human,
+body[data-species="human"] .credit-mouse {
+  display: none;
+}
+
 /* ------------------------------------------------------------ menu */
 
 .hero {
@@ -586,10 +652,11 @@ button.level .best {
   }
 }
 
-/* The slice. Width is limited so the slice + result bar fit on screen (aspect 1.425). */
+/* The slice. Width is limited so the slice + result bar fit on screen.
+   --aspect (width / height) is set from the image: ~1.43 mouse, ~0.73 human. */
 .stage {
   position: relative;
-  width: min(100%, calc(60vh * 1.425));
+  width: min(100%, calc(60vh * var(--aspect, 1.425)));
   margin: 0 auto;
   border-radius: var(--radius);
   overflow: hidden;
@@ -648,7 +715,7 @@ button.level .best {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px 24px;
-  width: min(100%, calc(60vh * 1.425));
+  width: min(100%, max(620px, calc(60vh * var(--aspect, 1.425))));
   margin: 12px auto 0;
   padding: 14px 20px;
   border-radius: var(--radius);
@@ -887,7 +954,7 @@ button.level .best {
 }
 
 .study-layout .stage {
-  width: min(100%, calc(68vh * 1.425));
+  width: min(100%, calc(68vh * var(--aspect, 1.425)));
 }
 
 #study-canvas {
@@ -911,7 +978,7 @@ button.level .best {
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: calc(68vh * 1.425);
+  max-width: max(320px, calc(68vh * var(--aspect, 1.425)));
   margin: 12px auto 0;
 }
 
@@ -1029,6 +1096,13 @@ footer a {
 @media (max-width: 560px) {
   .topbar {
     flex-wrap: wrap;
+  }
+  .species-tile {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+  .species-tile img {
+    width: 96px;
+    height: 90px;
   }
   .logo {
     font-size: 1.05rem;

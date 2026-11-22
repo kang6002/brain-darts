@@ -139,9 +139,11 @@ export function atlasLayer(labels: LabelMap, o: AtlasLayerOptions): HTMLCanvasEl
 
 type Point = { x: number; y: number }; // slice coordinates
 
-/** Size unit: one CSS pixel when the canvas is shown at its normal 912 px width. */
+/** Size unit: canvas pixels per CSS pixel as the canvas is shown now, so markers
+ *  look the same size on screen for wide mouse slices and tall human plates. */
 function unit(stage: Stage): number {
-  return stage.canvas.width / 912;
+  const shown = stage.canvas.getBoundingClientRect().width;
+  return shown > 0 ? stage.canvas.width / shown : 2;
 }
 
 function toCanvas(stage: Stage, p: Point): Point {

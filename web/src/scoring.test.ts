@@ -11,6 +11,12 @@ describe("distancePoints", () => {
     expect(distancePoints(2)).toBe(69);
   });
 
+  it("uses the species' distance scale (human: 5 mm)", () => {
+    expect(distancePoints(2, 5)).toBe(670);
+    expect(distancePoints(5, 5)).toBe(368);
+    expect(scoreClick(5, OUTSIDE, IDX.HY, STRUCTURES, () => 1, 5).points).toBe(368);
+  });
+
   it("never increases with distance and never goes negative", () => {
     let previous = Infinity;
     for (let d = 0; d <= 12; d += 0.25) {
