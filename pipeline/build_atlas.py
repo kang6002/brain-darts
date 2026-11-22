@@ -7,7 +7,7 @@ Downloads go to pipeline/cache/ (once). Output goes to web/public/data/:
     structures.json      the region tree (index, id, acronym, name, parent, depth, color)
     slices.json          per-slice metadata, region areas/centroids, quiz targets
     coronal_XXX.png      background image (average template, 8-bit grayscale)
-    coronal_XXX.bin      label map: uint16 little-endian, one structure index per pixel
+    coronal_XXX.bin.gz   label map: gzip of uint16 little-endian, one structure index per pixel
 
 Data sources (verified 2026-11-22, see CLAUDE.md):
     https://api.brain-map.org/api/v2/structure_graph_download/1.json
@@ -35,21 +35,43 @@ CACHE = HERE / "cache"
 OUT = HERE.parent / "web" / "public" / "data"
 
 CCF = "https://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf"
+API = "https://api.brain-map.org/api/v2/data/query.json"
+
+
+def structure_set_url(set_id: int) -> str:
+    return (f"{API}?criteria=model::Structure,rma::criteria,structure_sets[id$eq{set_id}]"
+            "&num_rows=all&only=id,acronym,name")
+
+
+# Allen curated structure sets (listed with model::StructureSet, checked 2026-11-22).
+SET_AREAS = 3                     # "Mouse - Areas": 51 areal-level structures
+SET_SUMMARY = 167587189           # "Brain – Summary Structures": 316, nuclei / cortical areas
+
 SOURCES = {
     "ontology.json": "https://api.brain-map.org/api/v2/structure_graph_download/1.json",
     "annotation_25.nrrd": f"{CCF}/annotation/ccf_2017/annotation_25.nrrd",
     "average_template_25.nrrd": f"{CCF}/average_template/average_template_25.nrrd",
+    f"structure_set_{SET_AREAS}.json": structure_set_url(SET_AREAS),
+    f"structure_set_{SET_SUMMARY}.json": structure_set_url(SET_SUMMARY),
 }
 
 RESOLUTION_MM = 0.025
-N_CORONAL_SLICES = 10
+N_CORONAL_SLICES = 36
 
-# Easy mode: major divisions a first-year course expects you to know.
-# Chosen by hand because depth in the Allen tree does not match region size
-# (CB is at depth 2, TH at depth 4, Isocortex at depth 5).
+# Easy mode: Allen's 12 "Brain - Major Divisions" (set 687527670) plus fiber
+# tracts and the ventricles, which exams also ask about.
 EASY_ACRONYMS = ["Isocortex", "OLF", "HPF", "CTXsp", "STR", "PAL", "TH", "HY",
                  "MB", "P", "MY", "CB", "fiber tracts", "VS"]
-MIN_TARGET_AREA_MM2 = 0.5
+
+# Summary-set entries that make poor hard-mode questions:
+#  - "fiber tracts": the whole white matter as one entry (it is in easy mode instead)
+#  - "..., unassigned": annotation leftovers Allen could not assign to a subfield
+HARD_EXCLUDE_ACRONYMS = {"fiber tracts"}
+HARD_EXCLUDE_NAME_SUFFIX = ", unassigned"
+
+# Smallest area (mm²) a region must cover on a slice to be asked there.
+# 0.1 mm² at 25 µm is 160 pixels, about 25×25 screen pixels at default size.
+MIN_TARGET_AREA_MM2 = {"easy": 0.5, "medium": 0.3, "hard": 0.1}
 
 
 def download(name: str) -> Path:
@@ -109,6 +131,19 @@ def main() -> None:
     missing = [a for a in EASY_ACRONYMS if a not in by_acronym]
     if missing:
         sys.exit(f"easy-mode acronyms not in ontology: {missing}")
+    candidates = {
+        "easy": [by_acronym[a] for a in EASY_ACRONYMS],
+        "medium": lib.structure_set_indices(
+            json.loads(download(f"structure_set_{SET_AREAS}.json").read_text()), id_to_index),
+        "hard": lib.structure_set_indices(
+            json.loads(download(f"structure_set_{SET_SUMMARY}.json").read_text()), id_to_index),
+    }
+    excluded = [i for i in candidates["hard"]
+                if structures[i]["acronym"] in HARD_EXCLUDE_ACRONYMS
+                or structures[i]["name"].endswith(HARD_EXCLUDE_NAME_SUFFIX)]
+    candidates["hard"] = [i for i in candidates["hard"] if i not in excluded]
+    print("excluded from hard: " + ", ".join(structures[i]["name"] for i in excluded))
+    print("candidate targets: " + ", ".join(f"{k} {len(v)}" for k, v in candidates.items()))
 
     annotation, ann_header = nrrd.read(str(download("annotation_25.nrrd")))
     template, _ = nrrd.read(str(download("average_template_25.nrrd")))
@@ -125,11 +160,9 @@ def main() -> None:
     positions = lib.pick_slices(area_per_ap, N_CORONAL_SLICES)
 
     OUT.mkdir(parents=True, exist_ok=True)
-    for old in list(OUT.glob("coronal_*.png")) + list(OUT.glob("coronal_*.bin")):
+    for old in OUT.glob("coronal_*"):
         old.unlink()
 
-    min_area_px = MIN_TARGET_AREA_MM2 / RESOLUTION_MM**2
-    easy_indices = [by_acronym[a] for a in EASY_ACRONYMS]
     slices = []
     for ap in positions:
         # Coronal slice: rows = dorsal->ventral (y), columns = left->right (x).
@@ -137,10 +170,13 @@ def main() -> None:
         height, width = label_slice.shape
         name = f"coronal_{ap:03d}"
         Image.fromarray(lib.to_uint8(template[ap], low, high), mode="L").save(OUT / f"{name}.png")
-        lib.write_label_bin(OUT / f"{name}.bin", label_slice)
+        lib.write_label_bin(OUT / f"{name}.bin.gz", label_slice)
 
         stats = lib.region_stats(label_slice, structures)
-        targets = [i for i in easy_indices if stats.get(i, {}).get("areaPx", 0) >= min_area_px]
+        targets = {
+            level: lib.targets_for_slice(stats, candidates[level], MIN_TARGET_AREA_MM2[level] / RESOLUTION_MM**2)
+            for level in candidates
+        }
         slices.append({
             "id": name,
             "plane": "coronal",
@@ -150,12 +186,17 @@ def main() -> None:
             "height": height,
             "mmPerPixel": RESOLUTION_MM,
             "image": f"{name}.png",
-            "labels": f"{name}.bin",
-            "targets": {"easy": targets},
-            "regions": {str(i): v for i, v in stats.items()},
+            "labels": f"{name}.bin.gz",
+            "regions": f"{name}.regions.json",
+            "targets": targets,
         })
-        print(f"{name}: AP {ap * RESOLUTION_MM:5.2f} mm, easy targets: "
-              + ", ".join(structures[i]["acronym"] for i in targets))
+        # Areas and centroids of every region on the slice. Kept out of
+        # slices.json so the game's first download stays small.
+        (OUT / f"{name}.regions.json").write_text(
+            json.dumps({str(i): v for i, v in stats.items()}, separators=(",", ":")))
+        print(f"{name}: AP {ap * RESOLUTION_MM:5.2f} mm, targets "
+              + " ".join(f"{level}={len(t):3d}" for level, t in targets.items())
+              + "  easy: " + ", ".join(structures[i]["acronym"] for i in targets["easy"]))
 
     (OUT / "structures.json").write_text(json.dumps(structures, separators=(",", ":")))
     (OUT / "slices.json").write_text(json.dumps({
@@ -165,7 +206,12 @@ def main() -> None:
             "resolutionMm": RESOLUTION_MM,
             "axes": "volume stored as (anterior->posterior, dorsal->ventral, left->right)",
             "apMm": "distance from the anterior edge of the CCF volume, not from bregma",
+            "levels": {"medium": f"Allen structure set {SET_AREAS}",
+                       "hard": f"Allen structure set {SET_SUMMARY} minus exclusions"},
         },
+        # Every region of each difficulty (before the per-slice size filter).
+        # The game uses it to say which region of that level a click fell in.
+        "levels": candidates,
         "slices": slices,
     }, indent=1))
     print(f"wrote {len(slices)} slices to {OUT}")

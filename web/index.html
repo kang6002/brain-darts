@@ -14,7 +14,7 @@
   <body>
     <header>
       <h1>Where in the Brain?</h1>
-      <p class="sub">Mouse · coronal slices · easy</p>
+      <p class="sub" id="subtitle">Mouse · coronal slices</p>
     </header>
 
     <main>
@@ -24,9 +24,24 @@
           click where you think it is. The closer you are, the more points you get
           (1000 for a click inside the region).
         </p>
-        <p id="best-start" class="muted"></p>
         <p id="status" class="muted">Loading atlas…</p>
-        <button id="start-btn" disabled>Start game</button>
+        <div class="levels">
+          <button class="level" data-difficulty="easy" disabled>
+            <strong>Easy</strong>
+            <span>Major divisions: isocortex, thalamus, cerebellum…</span>
+            <span class="best" data-best="easy"></span>
+          </button>
+          <button class="level" data-difficulty="medium" disabled>
+            <strong>Medium</strong>
+            <span>Areas: cortical areas, CA, dentate gyrus, striatum parts…</span>
+            <span class="best" data-best="medium"></span>
+          </button>
+          <button class="level" data-difficulty="hard" disabled>
+            <strong>Hard</strong>
+            <span>Nuclei and fields: CA1, VPM, LGd, PVH, SCs…</span>
+            <span class="best" data-best="hard"></span>
+          </button>
+        </div>
       </section>
 
       <section id="play" hidden>
@@ -48,7 +63,10 @@
         <h2 id="final-score"></h2>
         <p id="best-end" class="muted"></p>
         <ol id="summary"></ol>
-        <button id="again-btn">Play again</button>
+        <div class="buttons">
+          <button id="again-btn">Play again</button>
+          <button id="menu-btn" class="secondary">Change difficulty</button>
+        </div>
       </section>
     </main>
 

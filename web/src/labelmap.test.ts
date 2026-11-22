@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { decodeLabelMap, labelAt, nearestTargetPoint, OUTSIDE, screenToSlice, type LabelMap } from "./labelmap";
+import {
+  decodeLabelMap,
+  gunzipIfNeeded,
+  labelAt,
+  nearestTargetPoint,
+  OUTSIDE,
+  screenToSlice,
+  type LabelMap,
+} from "./labelmap";
 import { IDX, STRUCTURES } from "./testFixtures";
 
 // 5 × 3 map (width 5, height 3):
@@ -34,6 +42,25 @@ describe("decodeLabelMap", () => {
 
   it("rejects a file of the wrong size", () => {
     expect(() => decodeLabelMap(encode(PIXELS), 4, 3)).toThrow(/expected/);
+  });
+});
+
+describe("gunzipIfNeeded", () => {
+  async function gzip(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    const stream = new Blob([buffer]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Response(stream).arrayBuffer();
+  }
+
+  it("unzips a gzip file back to the exact label map", async () => {
+    const zipped = await gzip(encode(PIXELS));
+    expect(new Uint8Array(zipped).slice(0, 2)).toEqual(new Uint8Array([0x1f, 0x8b]));
+    const map2 = decodeLabelMap(await gunzipIfNeeded(zipped), W, H);
+    expect(Array.from(map2.data)).toEqual(PIXELS);
+  });
+
+  it("passes through data that a server already unzipped", async () => {
+    const raw = encode(PIXELS);
+    expect(await gunzipIfNeeded(raw)).toBe(raw);
   });
 });
 

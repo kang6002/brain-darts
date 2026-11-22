@@ -100,6 +100,47 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+button.level {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 14px 16px;
+}
+
+button.level strong {
+  font-size: 1.15rem;
+}
+
+button.level span {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+button.level .best {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;

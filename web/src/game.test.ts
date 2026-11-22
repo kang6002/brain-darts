@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { makeRounds } from "./game";
 import type { SliceMeta } from "./types";
 
-function slice(id: string, easy: number[]): SliceMeta {
+function slice(id: string, easy: number[], hard: number[] = []): SliceMeta {
   return {
     id, plane: "coronal", index: 0, apMm: 0, width: 1, height: 1, mmPerPixel: 0.025,
-    image: "", labels: "", targets: { easy }, regions: {},
+    image: "", labels: "", regions: "", targets: { easy, medium: [], hard },
   };
 }
 
@@ -38,5 +38,14 @@ describe("makeRounds", () => {
 
   it("fails clearly if no slice has targets", () => {
     expect(() => makeRounds([slice("empty", [])], "easy")).toThrow(/no slices/);
+  });
+
+  it("uses the target list of the chosen difficulty", () => {
+    const mixed = [slice("a", [4], [40, 41]), slice("b", [5], [])];
+    const rounds = makeRounds(mixed, "hard", 10, seeded(3));
+    for (const r of rounds) {
+      expect(r.slice.id).toBe("a"); // "b" has no hard targets
+      expect([40, 41]).toContain(r.target);
+    }
   });
 });

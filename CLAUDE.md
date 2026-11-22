@@ -52,6 +52,13 @@ Then commit `web/public/data/`.
   (uint32, gzip, shape 528×320×456, 25 µm). 10/50/100 µm versions exist alongside.
 - Background: `.../mouse_ccf/average_template/average_template_25.nrrd` (uint16, same
   shape). This is a two-photon autofluorescence average, **not** Nissl.
+- Structure sets (difficulty levels): listed via
+  `https://api.brain-map.org/api/v2/data/query.json?criteria=model::StructureSet&num_rows=all`
+  (50 sets). Members via
+  `...?criteria=model::Structure,rma::criteria,structure_sets[id$eq<SET>]&num_rows=all`.
+  Used: **3 "Mouse - Areas"** (51) for medium, **167587189 "Brain – Summary Structures"**
+  (316, "non-overlapping substructures at a mid-ontology level") for hard.
+  687527670 "Brain - Major Divisions" (12) = our easy list minus fiber tracts and VS.
 - `brainglobe-atlasapi` (v3.1.0) has `allen_mouse_*` and `allen_human_500um` but heavy
   dependencies. Not used for mouse; reconsider for the human phase.
 
@@ -76,6 +83,10 @@ Then commit `web/public/data/`.
 - Browsers report clicks in whole CSS pixels (Chrome: `clientX` truncated). At the
   default size that is ≈0.5 slice px ≈ 0.013 mm. This is expected, not a bug.
 - Some acronyms equal the name ("fiber tracts"); the prompt hides the acronym then.
+- Vite's dev and preview servers send `.gz` files with `Content-Encoding: gzip`, so the
+  browser unzips them before our code sees them. Other hosts may not.
+  `labelmap.ts:gunzipIfNeeded` checks the gzip magic bytes (1f 8b) and handles both.
+- Rebuilding is byte-for-byte deterministic (gzip `mtime=0`); verified by checksums.
 
 ## Toolchain (tested 2026-11-22)
 Node 26.13.1 (Vitest 5 needs ≥ 22.12), TypeScript 7.0.2 (native compiler, `tsc`),
@@ -87,24 +98,36 @@ Check before committing: `npm run typecheck && npm test && npm run build` in web
 - `structures.json`: array; entry i has `index == i`. Entry 0 = "outside brain"
   (annotation value 0). Fields: `index, id, acronym, name, parentIndex, depth, color`.
   Parents come before children.
-- `coronal_XXX.bin`: label map for slice at AP index XXX; raw **little-endian uint16**,
-  row-major; value at pixel (x, y) is `data[y * width + x]`; values are structure
-  *indices*. x = left→right, y = dorsal→ventral.
-- `coronal_XXX.png`: 8-bit grayscale template, same width/height as the .bin. One
+- `coronal_XXX.bin.gz`: label map for slice at AP index XXX; **gzip** of raw
+  **little-endian uint16**, row-major; value at pixel (x, y) is `data[y * width + x]`;
+  values are structure *indices*. x = left→right, y = dorsal→ventral. ~3–11 KB each.
+- `coronal_XXX.png`: 8-bit grayscale template, same width/height as the label map. One
   contrast window (0.5–99.5th percentile of brain voxels) for all slices.
-- `slices.json`: `{source, slices: [...]}`; each slice has `id, plane, index, apMm,
-  width, height, mmPerPixel, image, labels, targets.easy, regions`. `regions` is keyed
-  by index with `areaPx` and `centroid` [x, y], **aggregated up the tree**.
+- `coronal_XXX.regions.json`: `{index: {areaPx, centroid: [x, y]}}` for every region on
+  the slice, **aggregated up the tree**. Not used by the game yet (kept for study mode).
+- `slices.json` (~34 KB, loaded at start): `{source, levels, slices}`. `levels` =
+  every region index of each difficulty (before the size filter). Each slice has
+  `id, plane, index, apMm, width, height, mmPerPixel, image, labels, regions, targets`
+  where `targets.{easy,medium,hard}` are the indices that may be asked on that slice.
 
-## Game rules (M1)
-- Easy targets: Isocortex, OLF, HPF, CTXsp, STR, PAL, TH, HY, MB, P, MY, CB,
-  fiber tracts, VS; only on slices where the region is ≥ 0.5 mm².
-- 10 coronal slices, evenly spaced over AP positions where brain area ≥ 25 % of max.
+## Game rules
+- 36 coronal slices, evenly spaced over AP positions where brain area ≥ 25 % of max.
+  The game loads a slice when its round starts and prefetches the next one.
+- Difficulty levels (`build_atlas.py`):
+  - easy: Isocortex, OLF, HPF, CTXsp, STR, PAL, TH, HY, MB, P, MY, CB, fiber tracts, VS
+  - medium: Allen set 3 "Mouse - Areas" (includes functional groupings such as
+    DORsm/DORpm, MBsen/MBmot/MBsta, P-/MY-sen/mot/sat, PVZ/PVR/MEZ/LZ; owner may prune)
+  - hard: Allen set 167587189 "Summary Structures", **excluding** "fiber tracts" (whole
+    white matter as one entry) and names ending ", unassigned" (SSp-un)
+  - asked on a slice only if area ≥ 0.5 / 0.3 / 0.1 mm² (easy / medium / hard)
 - Distance = click to nearest point of any pixel within the target (either hemisphere),
   measured to pixel edges (click inside → 0). Points = round(1000·exp(−d / 0.75 mm)).
 - Partial credit: click inside the target's parent → at least 250, unless that parent
-  is root or grey (depth ≤ 1).
-- 10 rounds; best score in localStorage key `brain-atlas:best-score:easy`.
+  is root or grey (depth ≤ 1). Note: for medium cortical areas the parent is Isocortex,
+  so any cortex click gets ≥ 250.
+- After a click, the result names the exact region clicked and, if different, the
+  region of the current level containing it (`tree.ts:regionAtLevel`).
+- 10 rounds; best score per level in localStorage key `brain-atlas:best-score:<level>`.
 
 ## Attribution / terms
 Allen Institute Terms of Use: non-commercial use, redistribution and derivatives allowed;
@@ -116,7 +139,7 @@ terms. For a public release, consider confirming with terms@alleninstitute.org.
 
 ## Milestones
 - [x] M1 MVP: mouse, coronal, 10 slices, easy, playable end to end, tests
-- [ ] M2 difficulty levels, small-region filter, 30–40 slices, maybe 10 µm data, lazy loading
+- [x] M2 difficulty levels, small-region filter, 36 slices, lazy loading (10 µm data: not done)
 - [ ] M3 study mode (hover names, free browsing, outline overlay)
 - [ ] M4 review / spaced repetition of missed regions
 - [ ] M5 deploy to GitHub Pages

@@ -15,6 +15,7 @@ Conventions
 
 from __future__ import annotations
 
+import gzip
 from pathlib import Path
 
 import numpy as np
@@ -82,6 +83,27 @@ def ancestors(index: int, structures: list[dict]) -> list[int]:
     return chain
 
 
+def structure_set_indices(api_response: dict, id_to_index: dict[int, int]) -> list[int]:
+    """Our indices for the members of an Allen structure set.
+
+    `api_response` is the JSON from
+    /api/v2/data/query.json?criteria=model::Structure,rma::criteria,structure_sets[id$eq<SET>]
+    Raises ValueError if a member is not in the ontology.
+    """
+    if not api_response.get("success"):
+        raise ValueError("structure set query did not report success")
+    ids = [row["id"] for row in api_response["msg"]]
+    missing = [i for i in ids if i not in id_to_index]
+    if missing:
+        raise ValueError(f"structure set members not in ontology: {missing}")
+    return sorted(id_to_index[i] for i in ids)
+
+
+def targets_for_slice(stats: dict[int, dict], candidates: list[int], min_area_px: float) -> list[int]:
+    """Candidates that cover at least `min_area_px` on this slice (big enough to click fairly)."""
+    return [i for i in candidates if stats.get(i, {}).get("areaPx", 0) >= min_area_px]
+
+
 def descendant_ids(acronym: str, structures: list[dict]) -> set[int]:
     """All Allen ids at or below the structure with this acronym."""
     by_acronym = {s["acronym"]: s["index"] for s in structures}
@@ -116,18 +138,21 @@ def remap_labels(annotation: np.ndarray, id_to_index: dict[int, int]) -> np.ndar
 
 
 def write_label_bin(path: Path, labels: np.ndarray) -> None:
-    """Write a 2-D label map as raw little-endian uint16, row by row.
+    """Write a 2-D label map as gzip-compressed raw little-endian uint16, row by row.
 
     Pixel (x, y) is at position y * width + x, which is exactly how the
-    browser reads it back (see web/src/labelmap.ts).
+    browser reads it back (see web/src/labelmap.ts). Label maps are mostly
+    large uniform areas, so gzip shrinks them ~50-100x. mtime=0 keeps the
+    output identical between rebuilds, so git only sees real changes.
     """
     if labels.ndim != 2:
         raise ValueError("label map must be 2-D")
-    np.ascontiguousarray(labels, dtype="<u2").tofile(path)
+    raw = np.ascontiguousarray(labels, dtype="<u2").tobytes()
+    Path(path).write_bytes(gzip.compress(raw, compresslevel=9, mtime=0))
 
 
 def read_label_bin(path: Path, width: int, height: int) -> np.ndarray:
-    data = np.fromfile(path, dtype="<u2")
+    data = np.frombuffer(gzip.decompress(Path(path).read_bytes()), dtype="<u2")
     if data.size != width * height:
         raise ValueError(f"{path}: expected {width * height} values, got {data.size}")
     return data.reshape(height, width)

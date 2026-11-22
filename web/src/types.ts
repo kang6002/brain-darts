@@ -25,10 +25,11 @@ export interface SliceMeta {
   width: number;
   height: number;
   mmPerPixel: number;
-  image: string;
-  labels: string;
-  targets: { easy: number[] };
-  regions: Record<string, RegionStat>;
+  image: string; // PNG file name
+  labels: string; // .bin.gz file name
+  regions: string; // .regions.json file name: Record<index, RegionStat> (not used by the game yet)
+  targets: Record<Difficulty, number[]>; // structure indices that can be asked on this slice
 }
 
-export type Difficulty = keyof SliceMeta["targets"];
+export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];

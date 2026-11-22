@@ -15,7 +15,22 @@ export interface LabelMap {
   data: Uint16Array; // structure index of pixel (px, py) is data[py * width + px]
 }
 
-/** Decode a .bin file: raw little-endian uint16, one value per pixel, row by row. */
+/**
+ * Unzip a .bin.gz file with the browser's built-in DecompressionStream.
+ *
+ * Some web servers unzip .gz files on the way (Content-Encoding: gzip), so we
+ * only decompress if the data starts with gzip's two "magic" bytes 1f 8b.
+ * Raw label data never starts with them: pixel (0, 0) is a corner of the
+ * image, outside the brain, so its value is 0 (bytes 00 00).
+ */
+export async function gunzipIfNeeded(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return buffer;
+  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).arrayBuffer();
+}
+
+/** Decode a label map: raw little-endian uint16, one value per pixel, row by row. */
 export function decodeLabelMap(buffer: ArrayBuffer, width: number, height: number): LabelMap {
   if (buffer.byteLength !== width * height * 2) {
     throw new Error(`label map has ${buffer.byteLength} bytes, expected ${width * height * 2}`);

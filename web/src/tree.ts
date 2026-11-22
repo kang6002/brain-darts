@@ -26,6 +26,21 @@ export function descendantMask(target: number, structures: Structure[]): Uint8Ar
   return mask;
 }
 
+/**
+ * The closest region at or above `index` that belongs to `level` (a set of
+ * structure indices, e.g. all hard-mode regions). Null if there is none.
+ * Example: a click in "Primary motor area, Layer 6a" at medium level gives
+ * "Somatomotor areas".
+ */
+export function regionAtLevel(index: number, level: ReadonlySet<number>, structures: Structure[]): number | null {
+  let current: number | null = index;
+  while (current !== null && current !== OUTSIDE) {
+    if (level.has(current)) return current;
+    current = structures[current].parentIndex;
+  }
+  return null;
+}
+
 /** "fiber tracts" → "Fiber tracts" (some Allen names start lowercase). */
 export function displayName(s: Structure): string {
   return s.name.charAt(0).toUpperCase() + s.name.slice(1);

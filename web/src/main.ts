@@ -1,13 +1,14 @@
 // Wires the page together: screens, clicks, and drawing.
 // Game logic lives in game.ts, scoring.ts and labelmap.ts.
 
-import { loadAtlas, type Atlas, type LoadedSlice } from "./data";
+import { loadIndex, loadSlice, type AtlasIndex, type LoadedSlice } from "./data";
 import { makeRounds, ROUNDS_PER_GAME, type Round } from "./game";
 import { labelAt, nearestTargetPoint, screenToSlice, OUTSIDE } from "./labelmap";
 import { drawClick, drawLine, drawRegion, drawSlice, HIGHLIGHT, setupCanvas } from "./render";
 import { MAX_POINTS, scoreClick } from "./scoring";
 import { getBestScore, recordScore } from "./storage";
-import { descendantMask, displayName } from "./tree";
+import { descendantMask, displayName, regionAtLevel } from "./tree";
+import { DIFFICULTIES, type Difficulty } from "./types";
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -17,11 +18,14 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
 
 const screens = { start: el("start"), play: el("play"), end: el("end") };
 const canvas = el<HTMLCanvasElement>("canvas");
+const MAX_TOTAL = ROUNDS_PER_GAME * MAX_POINTS;
 
-let atlas: Atlas;
+let atlas: AtlasIndex;
+let difficulty: Difficulty = "easy";
 let rounds: Round[] = [];
 let roundNumber = 0; // 0-based
 let total = 0;
+let current: LoadedSlice | null = null; // slice on screen; null while loading
 let answered = false;
 const results: { target: string; points: number }[] = [];
 
@@ -29,45 +33,63 @@ function show(name: keyof typeof screens): void {
   for (const [key, section] of Object.entries(screens)) section.hidden = key !== name;
 }
 
-function currentSlice(): LoadedSlice {
-  return atlas.slices.get(rounds[roundNumber].slice.id)!;
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function bestText(): string {
-  const best = getBestScore();
-  return best === null ? "No best score yet." : `Best score: ${best} / ${ROUNDS_PER_GAME * MAX_POINTS}`;
+function showMenu(): void {
+  for (const level of DIFFICULTIES) {
+    const best = getBestScore(level);
+    document.querySelector(`[data-best="${level}"]`)!.textContent =
+      best === null ? "No best score yet" : `Best: ${best} / ${MAX_TOTAL}`;
+  }
+  el("subtitle").textContent = "Mouse · coronal slices";
+  show("start");
 }
 
-function startGame(): void {
-  rounds = makeRounds([...atlas.slices.values()].map((s) => s.meta), "easy");
+function startGame(level: Difficulty): void {
+  difficulty = level;
+  rounds = makeRounds(atlas.slices, difficulty);
   roundNumber = 0;
   total = 0;
   results.length = 0;
+  el("subtitle").textContent = `Mouse · coronal slices · ${level}`;
   show("play");
-  startRound();
+  void startRound();
 }
 
-function startRound(): void {
+async function startRound(): Promise<void> {
+  const round = rounds[roundNumber];
+  const target = atlas.structures[round.target];
+  current = null; // ignore clicks until the slice is ready
   answered = false;
-  const { meta, image } = currentSlice();
-  const target = atlas.structures[rounds[roundNumber].target];
   el("round-label").textContent = `Round ${roundNumber + 1} / ${ROUNDS_PER_GAME}`;
   el("total-label").textContent = `${total} points`;
   el("target-name").textContent = displayName(target);
   // Some Allen acronyms just repeat the name ("fiber tracts"); don't show those twice.
   const sameAsName = target.acronym.toLowerCase() === target.name.toLowerCase();
   el("target-acronym").textContent = sameAsName ? "" : `(${target.acronym})`;
-  el("slice-info").textContent =
-    `Coronal slice ${meta.apMm.toFixed(2)} mm from the front of the atlas volume. Dorsal is up.`;
   el("result").hidden = true;
+  el("slice-info").textContent = "Loading slice…";
+
+  const loaded = await loadSlice(round.slice);
+  // While we waited, the player may have moved on (new round, new game, menu).
+  if (rounds[roundNumber] !== round || screens.play.hidden) return;
+  current = loaded;
+  el("slice-info").textContent =
+    `Coronal slice ${loaded.meta.apMm.toFixed(2)} mm from the front of the atlas volume. Dorsal is up.`;
   canvas.classList.add("active");
-  const ctx = setupCanvas(canvas, meta.width, meta.height);
-  drawSlice(ctx, image);
+  const ctx = setupCanvas(canvas, loaded.meta.width, loaded.meta.height);
+  drawSlice(ctx, loaded.image);
+
+  // Download the next round's slice while the player thinks.
+  const next = rounds[roundNumber + 1];
+  if (next) void loadSlice(next.slice).catch(() => {}); // errors resurface when it is needed
 }
 
 function handleClick(event: MouseEvent): void {
-  if (answered) return;
-  const { meta, image, labels } = currentSlice();
+  if (answered || !current) return;
+  const { meta, image, labels } = current;
   const { structures } = atlas;
   const targetIndex = rounds[roundNumber].target;
   const click = screenToSlice(event.clientX, event.clientY, canvas.getBoundingClientRect(), meta.width, meta.height);
@@ -92,13 +114,7 @@ function handleClick(event: MouseEvent): void {
     score.distanceMm === 0
       ? `Spot on! +${score.points} points`
       : `${score.distanceMm.toFixed(2)} mm away · +${score.points} points`;
-  const clickedText =
-    clickedIndex === OUTSIDE ? "You clicked outside the brain." : `You clicked: ${displayName(structures[clickedIndex])}.`;
-  const parentText =
-    score.creditedParent !== null
-      ? ` That is inside ${displayName(structures[score.creditedParent])}, so you get partial credit.`
-      : "";
-  el("result-detail").textContent = clickedText + parentText;
+  el("result-detail").textContent = describeClick(clickedIndex) + describeCredit(score.creditedParent);
   el("total-label").textContent = `${total} points`;
   const next = el<HTMLButtonElement>("next-btn");
   next.textContent = roundNumber + 1 < ROUNDS_PER_GAME ? "Next round" : "See results";
@@ -106,21 +122,36 @@ function handleClick(event: MouseEvent): void {
   next.focus(); // so Enter / Space moves on
 }
 
+/** "You clicked: Primary motor area, Layer 6a (part of Somatomotor areas)." */
+function describeClick(clickedIndex: number): string {
+  if (clickedIndex === OUTSIDE) return "You clicked outside the brain.";
+  const { structures } = atlas;
+  const exact = displayName(structures[clickedIndex]);
+  const atLevel = regionAtLevel(clickedIndex, atlas.levels[difficulty], structures);
+  if (atLevel === null || atLevel === clickedIndex) return `You clicked: ${exact}.`;
+  return `You clicked: ${exact} (part of ${displayName(structures[atLevel])}).`;
+}
+
+function describeCredit(creditedParent: number | null): string {
+  if (creditedParent === null) return "";
+  return ` That is inside ${displayName(atlas.structures[creditedParent])}, so you get partial credit.`;
+}
+
 function nextRound(): void {
   roundNumber++;
   if (roundNumber < ROUNDS_PER_GAME) {
-    startRound();
+    void startRound();
   } else {
     endGame();
   }
 }
 
 function endGame(): void {
-  const isBest = recordScore(total);
-  el("final-score").textContent = `${total} / ${ROUNDS_PER_GAME * MAX_POINTS} points`;
-  el("best-end").textContent = isBest ? "New best score!" : bestText();
-  const list = el("summary");
-  list.replaceChildren(
+  const isBest = recordScore(difficulty, total);
+  el("final-score").textContent = `${capitalized(difficulty)}: ${total} / ${MAX_TOTAL} points`;
+  const best = getBestScore(difficulty);
+  el("best-end").textContent = isBest ? "New best score!" : `Best score: ${best} / ${MAX_TOTAL}`;
+  el("summary").replaceChildren(
     ...results.map((r) => {
       const li = document.createElement("li");
       li.textContent = `${r.target}: ${r.points}`;
@@ -132,19 +163,21 @@ function endGame(): void {
 }
 
 async function init(): Promise<void> {
-  el("best-start").textContent = bestText();
+  showMenu();
   try {
-    atlas = await loadAtlas();
+    atlas = await loadIndex();
   } catch (error) {
     el("status").textContent = `Could not load the atlas data: ${String(error)}`;
     throw error;
   }
-  el("status").textContent = `${atlas.slices.size} slices loaded.`;
-  const start = el<HTMLButtonElement>("start-btn");
-  start.disabled = false;
-  start.addEventListener("click", startGame);
+  el("status").textContent = `${atlas.slices.length} slices available. Choose a difficulty:`;
+  for (const button of document.querySelectorAll<HTMLButtonElement>("button.level")) {
+    button.disabled = false;
+    button.addEventListener("click", () => startGame(button.dataset.difficulty as Difficulty));
+  }
   el("next-btn").addEventListener("click", nextRound);
-  el("again-btn").addEventListener("click", startGame);
+  el("again-btn").addEventListener("click", () => startGame(difficulty));
+  el("menu-btn").addEventListener("click", showMenu);
   canvas.addEventListener("click", handleClick);
 }
 
