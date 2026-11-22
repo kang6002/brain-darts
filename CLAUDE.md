@@ -242,8 +242,11 @@ Human: "Cortex map: Gyri | Brodmann areas" switch, kept consistent with the deta
 - `.github/workflows/deploy.yml`: on push to `main` (or manual run) → Node 24, `npm ci`,
   `npm test`, `npm run build`, publish `web/dist` with configure-pages@v6,
   upload-pages-artifact@v5, deploy-pages@v5 (inputs checked against each action.yml).
-- GitHub repo `brain-darts` (public); Settings → Pages → Source: "GitHub Actions".
-  Site: `https://<user>.github.io/brain-darts/`. `vite base: "./"` makes all paths relative.
+- Repo https://github.com/kang6002/brain-darts (public); Pages source "GitHub Actions".
+  Live site: https://kang6002.github.io/brain-darts/ (first deploy 2026-11-22, ~1 min per run).
+  Commits use the GitHub noreply email (repo-local `user.email`), not a personal address.
+  GitHub Pages serves `.bin.gz` as `application/gzip` without Content-Encoding → the game
+  unzips label maps itself (verified on the live site). `vite base: "./"` makes all paths relative.
 - Checked before first push: a clean `git archive` of HEAD installs, tests and builds; the
   built site served from `/brain-darts/` by a plain static server (which does NOT unzip .gz,
   unlike Vite) plays both species with 0 mismatches.
@@ -265,6 +268,6 @@ public release, consider confirming with terms@alleninstitute.org.
       partial-credit size limit, no-repeat rounds
 - [x] M4 review / spaced repetition of missed regions
 - [x] Human mode: species picker, 106 plates, gyri + Brodmann maps, own scores/progress
-- [ ] M5 deploy to GitHub Pages (public repo `brain-darts`)
+- [x] M5 deploy to GitHub Pages: https://kang6002.github.io/brain-darts/ (repo github.com/kang6002/brain-darts)
 - [ ] Later: sagittal/horizontal planes, "name this region" mode, optional mouse Nissl view,
       human sulci questions (scored by distance to the sulcus marker?)
