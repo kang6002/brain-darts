@@ -1,0 +1,5 @@
+certifi
+numpy
+pynrrd
+pillow
+pytest

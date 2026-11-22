@@ -1,0 +1,12 @@
+# Python
+pipeline/.venv/
+pipeline/cache/
+__pycache__/
+.pytest_cache/
+
+# Node
+web/node_modules/
+web/dist/
+
+# OS / editor
+.DS_Store
