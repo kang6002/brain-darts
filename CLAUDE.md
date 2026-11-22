@@ -238,6 +238,17 @@ the region at that level, with breadcrumb and which game levels ask it; search
 Human: "Cortex map: Gyri | Brodmann areas" switch, kept consistent with the detail level
 (gyri only exist in the gyral map, Brodmann areas only in the Brodmann map).
 
+## Deployment (M5)
+- `.github/workflows/deploy.yml`: on push to `main` (or manual run) → Node 24, `npm ci`,
+  `npm test`, `npm run build`, publish `web/dist` with configure-pages@v6,
+  upload-pages-artifact@v5, deploy-pages@v5 (inputs checked against each action.yml).
+- GitHub repo `brain-darts` (public); Settings → Pages → Source: "GitHub Actions".
+  Site: `https://<user>.github.io/brain-darts/`. `vite base: "./"` makes all paths relative.
+- Checked before first push: a clean `git archive` of HEAD installs, tests and builds; the
+  built site served from `/brain-darts/` by a plain static server (which does NOT unzip .gz,
+  unlike Vite) plays both species with 0 mismatches.
+- Built site ≈ 56 MB (human 42 MB, mouse 8.6 MB) — fine for Pages (1 GB limit).
+
 ## Attribution / terms
 Allen Institute Terms of Use: non-commercial use, redistribution and derivatives allowed;
 keep notices; cite on the same page as the images (citation policy); no Allen trademarks
